@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="JobAnalyzer.Api/JobAnalyzer.Api.csproj" />
+  <Project Path="JobAnalyzer.Data/JobAnalyzer.Data.csproj" />
+  <Project Path="JobAnalyzer.Scraper/JobAnalyzer.Scraper.csproj" />
+</Solution>
