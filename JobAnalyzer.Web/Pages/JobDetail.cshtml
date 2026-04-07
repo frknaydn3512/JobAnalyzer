@@ -1,0 +1,127 @@
+@page "{id:int}"
+@model JobDetailModel
+@{
+    ViewData["Title"] = "İlan Detayı";
+    if (Model.Job == null)
+    {
+        Response.Redirect("/Listings");
+        return;
+    }
+}
+
+<div class="container mt-4 fade-in">
+    <a href="/Listings" class="btn btn-outline-secondary mb-4">
+        <i class="bi bi-arrow-left"></i> Tüm İlanlara Dön
+    </a>
+    
+    <div class="card shadow-lg border-0 rounded-3">
+        <div class="card-body p-5">
+            <div class="d-flex justify-content-between align-items-start mb-4 border-bottom pb-3">
+                <div>
+                    <h2 class="fw-bold text-dark mb-2">@Model.Job.Title</h2>
+                    <span class="badge bg-primary fs-6 me-2">Platform: Kariyer/Bionluk/LinkedIN</span>
+                    </div>
+                <a href="@Model.Job.Url" target="_blank" class="btn btn-primary btn-lg shadow-sm">
+                    Orijinal İlana Git <i class="bi bi-box-arrow-up-right"></i>
+                </a>
+            </div>
+
+            <h5 class="fw-bold mt-4 text-primary"><i class="bi bi-cpu"></i> AI Tarafından Çıkarılan Yetenekler</h5>
+            <div class="mb-4">
+                @if (!string.IsNullOrEmpty(Model.Job.ExtractedSkills))
+                {
+                    @foreach(var skill in Model.Job.ExtractedSkills.Split(','))
+                    {
+                        <span class="badge bg-info text-dark me-1 mb-2 fs-6 px-3 py-2">@skill.Trim()</span>
+                    }
+                }
+            </div>
+                    
+            @if (Model.Job.MinSalary > 0)
+            {
+                <div class="alert alert-success d-inline-block border-0 shadow-sm px-4 py-2 mt-3">
+                    <i class="bi bi-cash-stack fs-5 me-2"></i>
+                    <strong>Tahmini Maaş Aralığı:</strong> 
+                    <span class="fs-5 fw-bold">@((Model.Job.MinSalary ?? 0).ToString("N0")) - @((Model.Job.MaxSalary ?? 0).ToString("N0")) @Model.Job.Currency</span>
+                    <small class="d-block text-muted" style="font-size: 0.7rem;">* AI tarafından piyasa trendlerine göre tahmin edilmiştir.</small>
+                </div>
+            }
+
+            <h5 class="fw-bold mt-5 text-primary"><i class="bi bi-card-text"></i> İlan Detayları</h5>
+            <div class="bg-light p-4 rounded text-dark shadow-inner" style="white-space: pre-wrap; font-size: 1.1rem; line-height: 1.6;">
+                @* Not: Eğer veritabanında Description kolonu yoksa burası boş gelir, botlarına Description kazıtmayı unutma! *@
+                @(string.IsNullOrEmpty(Model.Job.Description) ? "Bu ilanın açıklaması sistemde kayıtlı değil. Orijinal ilana giderek inceleyebilirsiniz." : Model.Job.Description)
+            </div>
+
+            <div class="mt-5 text-center bg-primary bg-opacity-10 p-5 rounded border border-primary">
+    <h3 class="fw-bold text-primary mb-3">Bu İlan Tam Benlik mi Diyorsun?</h3>
+    
+    <button id="btnGenerate" onclick="generateLetter(@Model.Job.Id)" class="btn btn-info btn-lg fw-bold shadow px-5 py-3">
+        <span id="btnText"><i class="bi bi-magic fs-4"></i> Bana Özel Önyazı Yazdır</span>
+        <span id="btnLoader" class="spinner-border spinner-border-sm d-none"></span>
+    </button>
+
+    <div id="letterResult" class="mt-4 d-none text-start">
+        <label class="fw-bold text-dark">Size Özel Önyazı:</label>
+        <textarea id="txtLetter" class="form-control bg-white shadow-sm mt-2" style="height: 300px;"></textarea>
+        <button class="btn btn-sm btn-outline-secondary mt-2" onclick="copyLetter()"><i class="bi bi-clipboard"></i> Kopyala</button>
+    </div>
+</div>
+
+@Html.AntiForgeryToken() <script>
+    async function generateLetter(jobId) {
+        const btn = document.getElementById('btnGenerate');
+        const text = document.getElementById('btnText');
+        const loader = document.getElementById('btnLoader');
+        const resultArea = document.getElementById('letterResult');
+        const txtArea = document.getElementById('txtLetter');
+
+        // Loading Başlat
+        btn.disabled = true;
+        text.classList.add('d-none');
+        loader.classList.remove('d-none');
+
+        try {
+            const response = await fetch(`?handler=GenerateLetter&id=${jobId}`, {
+                method: 'POST',
+                headers: {
+                    'RequestVerificationToken': document.getElementsByName('__RequestVerificationToken')[0].value
+                }
+            });
+
+            if (response.ok) {
+                const data = await response.text();
+                txtArea.value = data;
+                resultArea.classList.remove('d-none');
+                // Sayfayı aşağı kaydır ki sonucu görsün
+                resultArea.scrollIntoView({ behavior: 'smooth' });
+            } else {
+                alert("Önyazı oluşturulurken bir hata oluştu.");
+            }
+        } catch (err) {
+            alert("Sistem hatası: " + err);
+        } finally {
+            // Loading Bitir
+            btn.disabled = false;
+            text.classList.remove('d-none');
+            loader.classList.add('d-none');
+        }
+    }
+
+    function copyLetter() {
+        const txt = document.getElementById('txtLetter');
+        txt.select();
+        document.execCommand('copy');
+        alert("Önyazı kopyalandı!");
+    }
+</script>
+
+        </div>
+    </div>
+</div>
+
+<style>
+    .fade-in { animation: fadeIn 0.5s ease-in-out; }
+    @@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .shadow-inner { box-shadow: inset 0px 0px 10px rgba(0,0,0,0.05); }
+</style>

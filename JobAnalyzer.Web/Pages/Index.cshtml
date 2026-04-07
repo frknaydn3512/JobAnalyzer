@@ -1,0 +1,177 @@
+@page
+@model IndexModel
+@{
+    ViewData["Title"] = "Piyasa Analizi";
+}
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<div class="container mt-4">
+    <div class="row mb-4 fade-in">
+        <div class="col-12">
+            <h2 class="fw-bold text-primary"><i class="bi bi-bar-chart-line"></i> Yazılım Kariyer & Piyasa Radarı</h2>
+            <p class="text-muted">Adayların kendilerini analiz etmesine yönelik güncel piyasa trendleri.</p>
+        </div>
+    </div>
+
+    <div class="row mb-4 fade-in">
+        <div class="col-md-4">
+            <div class="card text-center shadow-sm border-primary h-100">
+                <div class="card-body">
+                    <h5 class="card-title text-muted">Taranan İlan Sayısı</h5>
+                    <h2 class="fw-bold text-primary display-4 mt-3">@Model.TotalJobs</h2>
+                    <p class="small text-success mt-3"><i class="bi bi-arrow-up-circle-fill"></i> Sürekli analiz ediliyor</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-8">
+            <div class="card shadow-sm h-100 bg-light border-0">
+                <div class="card-body d-flex flex-column justify-content-center">
+                    <div class="d-flex align-items-center justify-content-between">
+                        <div>
+                            <h4 class="fw-bold mb-2">Kendi CV'ni Test Et!</h4>
+                            <p class="text-muted mb-0">Hangi yetenekleri geliştirmen gerektiğini gör, sana en uygun ilanları bulalım.</p>
+                        </div>
+                        <a href="/CvAnalyzer" class="btn btn-lg btn-success shadow-sm">
+                            <i class="bi bi-magic"></i> AI Analizi
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- YENİ ANALİZ PANELLERİ BAŞLIYOR -->
+    <div class="row fade-in mb-4">
+        <!-- Sol Panel: Yetenek Radarı -->
+        <div class="col-lg-6 mb-4 mb-lg-0">
+            <div class="card shadow-sm p-4 h-100 border-0 rounded-4">
+                <h5 class="fw-bold mb-3"><i class="bi bi-radar text-info"></i> Sektörel Yetenek Radarı</h5>
+                <p class="text-muted small">Piyasadaki taleplerin ana kırılımları. Kariyerini buna göre şekillendir.</p>
+                <div style="height: 300px; display: flex; justify-content: center; align-items: center;">
+                    <canvas id="radarChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sağ Panel: Çalışma Modelleri -->
+        <div class="col-lg-6">
+            <div class="card shadow-sm p-4 h-100 border-0 rounded-4">
+                <h5 class="fw-bold mb-3"><i class="bi bi-building text-warning"></i> Çalışma Modeli Haritası</h5>
+                <p class="text-muted small">Remote, Hibrit ve Ofis çalışma stillerinin dağılımı.</p>
+                <div style="height: 300px; display: flex; justify-content: center; align-items: center;">
+                    <canvas id="workModelChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row fade-in">
+        <!-- Klasik Bar Grafiği -->
+        <div class="col-lg-8 mb-4">
+            <div class="card shadow-sm p-4 h-100 border-0 rounded-4">
+                <h5 class="fw-bold mb-4"><i class="bi bi-fire text-danger"></i> En Çok Aranan Demirbaş Teknolojiler</h5>
+                <div style="height: 350px;">
+                    <canvas id="topTechChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Yükselen Niş Yetenekler -->
+        <div class="col-lg-4 mb-4">
+            <div class="card shadow-sm p-4 h-100 border-0 rounded-4 bg-dark text-white">
+                <h5 class="fw-bold mb-3 text-warning"><i class="bi bi-rocket-takeoff"></i> Yükselen Niş Yıldızlar</h5>
+                <p class="small text-light opacity-75">Demirbaşların haricinde en popülerleşen teknolojiler.</p>
+                
+                <div class="mt-4">
+                    @foreach(var tag in Model.NicheSkills)
+                    {
+                        var size = Math.Max(12, Math.Min(30, 10 + (tag.Count / 5)));
+                        <span class="badge rounded-pill bg-secondary bg-opacity-50 border border-light border-opacity-25 me-2 mb-2 p-2 shadow-sm" style="font-size: @(size)px;">
+                            @tag.Name <small class="opacity-50">(@tag.Count)</small>
+                        </span>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        
+        // 1. TOP 10 DEMİRBAŞ (Bar Chart)
+        var topTechData = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.TopTechs));
+        var ttCtx = document.getElementById('topTechChart').getContext('2d');
+        new Chart(ttCtx, {
+            type: 'bar',
+            data: {
+                labels: topTechData.map(e => e.Name),
+                datasets: [{
+                    label: 'Bahsedilme Sayısı',
+                    data: topTechData.map(e => e.Count),
+                    backgroundColor: 'rgba(13, 110, 253, 0.8)',
+                    borderRadius: 6
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+        });
+
+        // 2. YETENEK RADARI (Radar Chart)
+        var radarVals = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.RadarData));
+        var radarCtx = document.getElementById('radarChart').getContext('2d');
+        new Chart(radarCtx, {
+            type: 'radar',
+            data: {
+                labels: ['Frontend', 'Backend', 'Database', 'DevOps/Cloud', 'Mobile'],
+                datasets: [{
+                    label: 'Piyasa Yoğunluğu',
+                    data: radarVals,
+                    backgroundColor: 'rgba(25, 135, 84, 0.2)', // Bootstrap success
+                    borderColor: 'rgba(25, 135, 84, 1)',
+                    pointBackgroundColor: 'rgba(25, 135, 84, 1)',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: { r: { beginAtZero: true, ticks: { display: false } } }
+            }
+        });
+
+        // 3. ÇALIŞMA MODELİ (Doughnut Chart)
+        var workVals = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.WorkModelData));
+        var workCtx = document.getElementById('workModelChart').getContext('2d');
+        new Chart(workCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Uzaktan (Remote)', 'Hibrit', 'Ofis (Tahmini)'],
+                datasets: [{
+                    data: workVals,
+                    backgroundColor: [
+                        'rgba(13, 202, 240, 0.8)',  // Info (Cyan) - Remote
+                        'rgba(255, 193, 7, 0.8)',   // Warning (Yellow) - Hybrid
+                        'rgba(108, 117, 125, 0.8)'  // Secondary (Gray) - Office
+                    ],
+                    borderWidth: 0,
+                    hoverOffset: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '65%',
+                plugins: {
+                    legend: { position: 'bottom' }
+                }
+            }
+        });
+    });
+</script>
+
+<style>
+    .fade-in { animation: fadeIn 0.6s ease-in-out; }
+    @@keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+</style>
