@@ -10,41 +10,67 @@ namespace JobAnalyzer.Scraper.Scrapers
     /// Adzuna Multi-Country — GB, US, AU, CA, DE ülkelerinden yazılım ilanları
     /// Ücretsiz plan: 250 istek/gün, sayfa başına 50 ilan
     /// </summary>
-    public class AdzunaScraper : IJobScraper
+    public class AdzunaScraper : ScraperBase
     {
-        public string ScraperName => "Adzuna (Global)";
-        private readonly string _connectionString = "Server=(localdb)\\MSSQLLocalDB;Database=JobAnalyzerDb;Trusted_Connection=True;TrustServerCertificate=True;";
+        public override string ScraperName => "Adzuna (Global)";
 
         private readonly string _appId = Environment.GetEnvironmentVariable("ADZUNA_APP_ID") ?? "";
         private readonly string _appKey = Environment.GetEnvironmentVariable("ADZUNA_APP_KEY") ?? "";
 
-        // Ülke kodu → kaç sayfa çekileceği (sayfa başına 50 ilan)
+        // Adzuna'nın desteklediği tüm ülkeler — TR desteklenmiyor
+        // 250 istek/gün limiti var, requestCount >= 240 olunca otomatik durur
         private readonly (string country, string label, int pages)[] _targets = {
-            ("gb", "UK",        4),   // 200 ilan
-            ("us", "USA",       4),   // 200 ilan
-            ("au", "Avustralya",2),   // 100 ilan
-            ("ca", "Kanada",    2),   // 100 ilan
-            ("de", "Almanya",   2),   // 100 ilan
-            ("fr", "Fransa",    1),   // 50 ilan
-            ("nl", "Hollanda",  1),   // 50 ilan
+            ("gb", "UK",          2),
+            ("us", "USA",         2),
+            ("au", "Avustralya",  2),
+            ("ca", "Kanada",      2),
+            ("de", "Almanya",     2),
+            ("fr", "Fransa",      2),
+            ("nl", "Hollanda",    2),
+            ("in", "Hindistan",   2),
+            ("it", "İtalya",      2),
+            ("sg", "Singapur",    2),
+            ("br", "Brezilya",    2),
+            ("pl", "Polonya",     2),
+            ("at", "Avusturya",   1),
+            ("be", "Belçika",     1),
+            ("nz", "Yeni Zelanda",1),
+            ("za", "G. Afrika",   1),
+            ("mx", "Meksika",     1),
+            ("ch", "İsviçre",     1),
+            ("es", "İspanya",     1),
+            ("ru", "Rusya",       1),
         };
 
         private readonly string[] _keywords = {
             "software developer",
             "backend developer",
             "frontend developer",
+            "devops engineer",
+            "data engineer",
+            "full stack developer",
+            "python developer",
+            "mobile developer",
         };
 
-        public async Task RunAsync()
+        public override async Task RunAsync()
         {
             Console.WriteLine($"\n🤖 [{ScraperName}] Çok Ülkeli API Başlatıldı...");
+
+            if (string.IsNullOrWhiteSpace(_appId) || _appId == "your_adzuna_app_id_here" ||
+                string.IsNullOrWhiteSpace(_appKey) || _appKey == "your_adzuna_app_key_here")
+            {
+                Console.WriteLine("  ⚠️ ADZUNA_APP_ID veya ADZUNA_APP_KEY bulunamadı.");
+                Console.WriteLine("  👉 https://developer.adzuna.com adresinden ücretsiz key al, .env dosyasına ekle.");
+                return;
+            }
 
             using HttpClient client = new HttpClient();
             client.DefaultRequestHeaders.Add("User-Agent", "JobAnalyzerBot/1.0");
             client.Timeout = TimeSpan.FromSeconds(30);
 
             var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
-            optionsBuilder.UseSqlServer(_connectionString);
+            optionsBuilder.UseNpgsql(ConnectionString);
             using var db = new AppDbContext(optionsBuilder.Options);
 
             var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
@@ -82,7 +108,8 @@ namespace JobAnalyzer.Scraper.Scrapers
                                 break;
                             }
 
-                            string json = await response.Content.ReadAsStringAsync();
+                            byte[] bytes = await response.Content.ReadAsByteArrayAsync();
+                            string json = System.Text.Encoding.UTF8.GetString(bytes);
                             var data = JsonSerializer.Deserialize<AdzunaResponse>(json, jsonOptions);
 
                             if (data?.Results == null || data.Results.Count == 0)
@@ -111,8 +138,8 @@ namespace JobAnalyzer.Scraper.Scrapers
                                     Url = job.RedirectUrl,
                                     Source = ScraperName,
                                     ExtractedSkills = "",
-                                    DateScraped = DateTime.Now,
-                                    DatePosted = DateTime.TryParse(job.Created, out var dt) ? dt : DateTime.Now
+                                    DateScraped = DateTime.UtcNow,
+                                    DatePosted = DateTime.TryParse(job.Created, out var dt) ? DateTime.SpecifyKind(dt, DateTimeKind.Utc) : DateTime.UtcNow
                                 });
                                 pageAdded++;
                                 totalAdded++;
@@ -160,3 +187,4 @@ namespace JobAnalyzer.Scraper.Scrapers
         }
     }
 }
+

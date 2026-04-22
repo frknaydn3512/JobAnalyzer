@@ -1,0 +1,38 @@
+@page
+@model JobAnalyzer.Web.Pages.Payment.PaymentIndexModel
+@{
+    ViewData["Title"] = "Ödeme";
+}
+
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card p-4 text-center">
+            @if (!string.IsNullOrEmpty(Model.ErrorMessage))
+            {
+                <div class="alert alert-danger">@Model.ErrorMessage</div>
+            }
+            else
+            {
+                <i class="bi bi-credit-card display-3 text-primary mb-3"></i>
+                <h4 class="fw-bold">@Model.PlanName Planı</h4>
+                <div class="display-5 fw-bold text-primary my-3">@Model.Amount ₺<small class="fs-6 text-muted fw-normal">/ay</small></div>
+                <p class="text-muted mb-4">Iyzico güvenli ödeme sayfasına yönlendiriliyorsunuz...</p>
+                <div class="spinner-border text-primary" role="status"></div>
+                <p class="text-muted small mt-3">Yönlendirme gerçekleşmezse aşağıdaki butona tıklayın.</p>
+                @if (!string.IsNullOrEmpty(Model.PaymentPageUrl))
+                {
+                    <a href="@Model.PaymentPageUrl" class="btn btn-primary mt-2">Ödeme Sayfasına Git →</a>
+                }
+            }
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    @if (!string.IsNullOrEmpty(Model.PaymentPageUrl))
+    {
+        <script>
+            setTimeout(() => window.location.href = "@Model.PaymentPageUrl", 1500);
+        </script>
+    }
+}

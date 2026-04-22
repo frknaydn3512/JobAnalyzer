@@ -1,0 +1,142 @@
+@page
+@model JobAnalyzer.Web.Pages.SalaryBenchmarkModel
+@{
+    ViewData["Title"] = "Skill Benchmark";
+}
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h2 class="fw-bold text-primary mb-0"><i class="bi bi-graph-up-arrow"></i> Skill Benchmark</h2>
+        <p class="text-muted small mb-0">@Model.TotalAnalyzed.ToString("N0") analiz edilmiş ilandaki gerçek talep verisine dayalı.</p>
+    </div>
+</div>
+
+<!-- Filtreler -->
+<div class="card p-3 mb-4 border-0 bg-light shadow-sm">
+    <form method="get" class="row g-2 align-items-end">
+        <div class="col-md-4">
+            <label class="form-label fw-semibold small mb-1">Kategori</label>
+            <select asp-for="Category" class="form-select">
+                <option value="">Tüm Kategoriler</option>
+                <option value="Frontend">Frontend</option>
+                <option value="Backend">Backend</option>
+                <option value="Database">Database</option>
+                <option value="DevOps">DevOps / Cloud</option>
+                <option value="Mobile">Mobile</option>
+                <option value="AI">AI / ML</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label fw-semibold small mb-1">Konum</label>
+            <select asp-for="Location" class="form-select">
+                <option value="">Tüm Konumlar</option>
+                <option value="Remote">Remote</option>
+                <option value="Istanbul">İstanbul</option>
+                <option value="Ankara">Ankara</option>
+                <option value="Izmir">İzmir</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label fw-semibold small mb-1">Seviye</label>
+            <select asp-for="Level" class="form-select">
+                <option value="">Tüm Seviyeler</option>
+                <option value="Junior">Junior</option>
+                <option value="Mid">Mid-Level</option>
+                <option value="Senior">Senior</option>
+            </select>
+        </div>
+        <div class="col-md-3 d-flex gap-2">
+            <button type="submit" class="btn btn-primary flex-grow-1">Filtrele</button>
+            <a href="/SalaryBenchmark" class="btn btn-outline-secondary">Sıfırla</a>
+        </div>
+    </form>
+</div>
+
+<!-- Bar Chart -->
+<div class="card p-4 mb-4 border-0 shadow-sm rounded-4">
+    <h5 class="fw-bold mb-3"><i class="bi bi-bar-chart text-primary"></i> Skill Talep Sıralaması
+        @if (!string.IsNullOrEmpty(Model.Category)) { <span class="badge bg-primary ms-2">@Model.Category</span> }
+    </h5>
+    <div style="height: 320px;">
+        <canvas id="skillChart"></canvas>
+    </div>
+</div>
+
+<!-- Skill Tablosu -->
+<div class="card p-4 border-0 shadow-sm rounded-4">
+    <h5 class="fw-bold mb-3"><i class="bi bi-table text-success"></i> Detaylı Skill Analizi</h5>
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>#</th>
+                    <th>Skill</th>
+                    <th>Kategori</th>
+                    <th>İlan Sayısı</th>
+                    <th>Piyasa Payı</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @{ int rank = 1; }
+                @foreach (var s in Model.SkillStats)
+                {
+                    var pct = Model.SkillStats.Any() ? (int)(s.Count * 100.0 / Model.SkillStats.Max(x => x.Count)) : 0;
+                    <tr>
+                        <td class="text-muted fw-bold">@rank</td>
+                        <td class="fw-semibold">@s.Name</td>
+                        <td><span class="badge" style="background:@CategoryColor(s.Category)">@s.Category</span></td>
+                        <td>@s.Count.ToString("N0")</td>
+                        <td style="min-width:120px">
+                            <div class="progress" style="height:8px">
+                                <div class="progress-bar" style="width:@pct%;background:@CategoryColor(s.Category)"></div>
+                            </div>
+                        </td>
+                        <td>
+                            <a href="/Listings?SearchTerm=@s.Name" class="btn btn-sm btn-outline-primary">İlanları Gör</a>
+                        </td>
+                    </tr>
+                    rank++;
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@functions {
+    string CategoryColor(string? cat) => cat switch
+    {
+        "Frontend" => "#0dcaf0",
+        "Backend"  => "#0d6efd",
+        "Database" => "#6f42c1",
+        "DevOps"   => "#fd7e14",
+        "Mobile"   => "#20c997",
+        "AI"       => "#dc3545",
+        _          => "#6c757d"
+    };
+}
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    var data = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.SkillStats.Take(20).ToList()));
+    var colors = data.map(s => {
+        const map = { Frontend:'#0dcaf0', Backend:'#0d6efd', Database:'#6f42c1', DevOps:'#fd7e14', Mobile:'#20c997', AI:'#dc3545' };
+        return map[s.category] || '#6c757d';
+    });
+    new Chart(document.getElementById('skillChart'), {
+        type: 'bar',
+        data: {
+            labels: data.map(s => s.name),
+            datasets: [{ label: 'İlan Sayısı', data: data.map(s => s.count),
+                backgroundColor: colors, borderRadius: 6 }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+        }
+    });
+});
+</script>

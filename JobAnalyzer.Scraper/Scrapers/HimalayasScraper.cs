@@ -10,92 +10,119 @@ namespace JobAnalyzer.Scraper.Scrapers
     /// Himalayas.app - API tabanlı, kayıt gerektirmez, remote yazılım ilanları.
     /// Tamamen bedava ve açık JSON API kullanır.
     /// </summary>
-    public class HimalayasScraper : IJobScraper
+    public class HimalayasScraper : ScraperBase
     {
-        public string ScraperName => "Himalayas (Global Remote API)";
-        private readonly string _connectionString = "Server=(localdb)\\MSSQLLocalDB;Database=JobAnalyzerDb;Trusted_Connection=True;TrustServerCertificate=True;";
+        public override string ScraperName => "Himalayas (Global Remote API)";
 
-        public async Task RunAsync()
+        // Ücretsiz API kategorisiz çağrıda daha fazla sonuç verebilir
+        // Kategorili çağrılar aynı seti döndürüyorsa duplikat kontrolü ile elenir
+        private readonly string[] _categories = {
+            "software-engineering", "devops-sysadmin", "data-science",
+            "product-management", "backend", "frontend", "mobile",
+        };
+
+        public override async Task RunAsync()
         {
             Console.WriteLine($"\n🤖 [{ScraperName}] API Hortumu Bağlanıyor...");
-
-            // Tüm tech kategorileri
-            string[] categories = {
-                "software-engineering",
-                "devops-sysadmin",
-                "data-science",
-                "product-management",
-                "design",
-                "backend",
-                "frontend",
-                "mobile",
-            };
 
             using HttpClient client = new HttpClient();
             client.DefaultRequestHeaders.Add("User-Agent", "JobAnalyzerBot/1.0");
             client.Timeout = TimeSpan.FromSeconds(30);
 
             var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
-            optionsBuilder.UseSqlServer(_connectionString);
+            optionsBuilder.UseNpgsql(ConnectionString);
             using var db = new AppDbContext(optionsBuilder.Options);
 
             var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
             int totalAdded = 0;
 
-            foreach (var category in categories)
+            // Kategoriler: önce genel, sonra her kategori — her biri için sayfalama
+            var targets = new List<(string? category, string label)>
             {
-                Console.WriteLine($"\n  📂 Katalog: {category}");
-                try
+                (null, "Genel (tüm ilanlar)")
+            };
+            foreach (var cat in _categories)
+                targets.Add((cat, cat));
+
+            foreach (var (category, label) in targets)
+            {
+                Console.WriteLine($"\n  📂 {label}");
+                int catAdded = 0;
+
+                for (int page = 1; page <= 20; page++)
                 {
-                    string apiUrl = $"https://himalayas.app/jobs/api?category={category}&limit=100";
-                    var response = await client.GetAsync(apiUrl);
-                    response.EnsureSuccessStatusCode();
+                    string apiUrl = category == null
+                        ? $"https://himalayas.app/jobs/api?limit=20&page={page}"
+                        : $"https://himalayas.app/jobs/api?category={category}&limit=20&page={page}";
 
-                    string jsonResponse = await response.Content.ReadAsStringAsync();
-                    var data = JsonSerializer.Deserialize<HimalayasResponse>(jsonResponse, jsonOptions);
-
-                    if (data?.Jobs == null || data.Jobs.Count == 0)
+                    try
                     {
-                        Console.WriteLine($"  📭 Sonuç yok.");
-                        continue;
-                    }
+                        var response = await client.GetAsync(apiUrl);
+                        response.EnsureSuccessStatusCode();
 
-                    Console.WriteLine($"  🎉 {data.Jobs.Count} ilan! İşleniyor...");
-                    int catAdded = 0;
+                        string jsonResponse = await response.Content.ReadAsStringAsync();
+                        var data = JsonSerializer.Deserialize<HimalayasResponse>(jsonResponse, jsonOptions);
 
-                    foreach (var job in data.Jobs)
-                    {
-                        if (string.IsNullOrWhiteSpace(job.Url) || string.IsNullOrWhiteSpace(job.Title)) continue;
-                        string fullUrl = job.Url.StartsWith("http") ? job.Url : $"https://himalayas.app{job.Url}";
-                        if (db.JobPostings.Any(j => j.Url == fullUrl)) continue;
-
-                        string cleanDesc = System.Text.RegularExpressions.Regex.Replace(job.Description ?? "", "<.*?>", "");
-                        cleanDesc = System.Text.RegularExpressions.Regex.Replace(cleanDesc, @"\s+", " ").Trim();
-
-                        db.JobPostings.Add(new JobPosting
+                        if (data?.Jobs == null || data.Jobs.Count == 0)
                         {
-                            Title = (job.Title ?? "").Length > 100 ? job.Title!.Substring(0, 100) : (job.Title ?? ""),
-                            CompanyName = (job.CompanyName ?? "Bilinmiyor").Length > 100 ? job.CompanyName!.Substring(0, 100) : (job.CompanyName ?? "Bilinmiyor"),
-                            Location = string.IsNullOrWhiteSpace(job.Location) ? "Remote / Global" : job.Location,
-                            Description = cleanDesc.Length > 4000 ? cleanDesc.Substring(0, 4000) : cleanDesc,
-                            Url = fullUrl,
-                            Source = ScraperName,
-                            ExtractedSkills = "",
-                            DateScraped = DateTime.Now,
-                            DatePosted = DateTime.Now
-                        });
-                        catAdded++;
-                        totalAdded++;
-                    }
+                            Console.WriteLine($"  📭 Sayfa {page}: Sonuç yok, duruluyor.");
+                            break;
+                        }
 
-                    db.SaveChanges();
-                    Console.WriteLine($"  ✅ {catAdded} YENİ ilan eklendi.");
-                    await Task.Delay(600);
+                        Console.WriteLine($"  🎉 Sayfa {page}: {data.Jobs.Count} ilan");
+                        int pageAdded = 0;
+
+                        foreach (var job in data.Jobs)
+                        {
+                            if (string.IsNullOrWhiteSpace(job.Title)) continue;
+
+                            string rawUrl = !string.IsNullOrWhiteSpace(job.Url) ? job.Url
+                                          : !string.IsNullOrWhiteSpace(job.ApplicationLink) ? job.ApplicationLink
+                                          : "";
+                            if (string.IsNullOrWhiteSpace(rawUrl)) continue;
+
+                            string fullUrl = rawUrl.StartsWith("http") ? rawUrl : $"https://himalayas.app{rawUrl}";
+                            if (db.JobPostings.Any(j => j.Url == fullUrl)) continue;
+
+                            string cleanDesc = System.Text.RegularExpressions.Regex.Replace(job.Description ?? "", "<.*?>", "");
+                            cleanDesc = System.Text.RegularExpressions.Regex.Replace(cleanDesc, @"\s+", " ").Trim();
+
+                            string locationStr = (job.LocationRestrictions != null && job.LocationRestrictions.Count > 0)
+                                ? string.Join(", ", job.LocationRestrictions)
+                                : "Remote / Global";
+
+                            db.JobPostings.Add(new JobPosting
+                            {
+                                Title = (job.Title ?? "").Length > 100 ? job.Title!.Substring(0, 100) : (job.Title ?? ""),
+                                CompanyName = (job.CompanyName ?? "Bilinmiyor").Length > 100 ? job.CompanyName!.Substring(0, 100) : (job.CompanyName ?? "Bilinmiyor"),
+                                Location = locationStr.Length > 100 ? locationStr.Substring(0, 100) : locationStr,
+                                Description = cleanDesc.Length > 4000 ? cleanDesc.Substring(0, 4000) : cleanDesc,
+                                Url = fullUrl,
+                                Source = ScraperName,
+                                ExtractedSkills = "",
+                                DateScraped = DateTime.UtcNow,
+                                DatePosted = DateTime.UtcNow
+                            });
+                            pageAdded++;
+                            catAdded++;
+                            totalAdded++;
+                        }
+
+                        db.SaveChanges();
+                        Console.WriteLine($"  ✅ {pageAdded} YENİ ilan eklendi.");
+
+                        // Sayfada yeni ilan yoksa sonraki sayfalar da boş olacaktır
+                        if (pageAdded == 0) break;
+                        await Task.Delay(400);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"  ❌ Hata ({label} sayfa {page}): {ex.Message}");
+                        break;
+                    }
                 }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"  ❌ Hata ({category}): {ex.Message}");
-                }
+
+                Console.WriteLine($"  📊 {label}: toplam {catAdded} yeni ilan");
             }
 
             Console.WriteLine($"\n✅ [{ScraperName}] Tamamlandı! Toplam {totalAdded} YENİ ilan eklendi.");
@@ -112,17 +139,23 @@ namespace JobAnalyzer.Scraper.Scrapers
             [JsonPropertyName("title")]
             public string? Title { get; set; }
 
+            // Himalayasdaki ilanın kendi sayfası — her zaman dolu gelir
             [JsonPropertyName("url")]
             public string? Url { get; set; }
+
+            // Şirkete ait harici başvuru linki — bazen null olur
+            [JsonPropertyName("applicationLink")]
+            public string? ApplicationLink { get; set; }
 
             [JsonPropertyName("companyName")]
             public string? CompanyName { get; set; }
 
-            [JsonPropertyName("location")]
-            public string? Location { get; set; }
+            [JsonPropertyName("locationRestrictions")]
+            public List<string>? LocationRestrictions { get; set; }
 
             [JsonPropertyName("description")]
             public string? Description { get; set; }
         }
     }
 }
+

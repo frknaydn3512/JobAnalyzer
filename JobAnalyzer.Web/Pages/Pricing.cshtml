@@ -1,0 +1,132 @@
+@page
+@model JobAnalyzer.Web.Pages.PricingModel
+@{
+    ViewData["Title"] = "Planlar & Fiyatlandırma";
+}
+
+<div class="row mb-4">
+    <div class="col-12 text-center">
+        <h2 class="fw-bold">Planlar & Fiyatlandırma</h2>
+        <p class="text-muted">İş arama sürecini hızlandır, doğru planı seç.</p>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(Model.Message))
+{
+    <div class="alert alert-info text-center mb-4">@Model.Message</div>
+}
+
+<div class="row justify-content-center g-4 mb-5">
+
+    <!-- Free -->
+    <div class="col-md-4">
+        <div class="card h-100 @(Model.CurrentPlan == "Free" ? "border border-primary border-2" : "")">
+            <div class="card-body p-4">
+                @if (Model.CurrentPlan == "Free")
+                {
+                    <span class="badge bg-primary mb-2">Mevcut Planınız</span>
+                }
+                <h4 class="fw-bold">Free</h4>
+                <div class="display-5 fw-bold my-3">0 ₺<small class="fs-6 text-muted fw-normal">/ay</small></div>
+                <ul class="list-unstyled mb-4">
+                    <li class="py-1"><i class="bi bi-check-circle-fill text-success me-2"></i>Aylık 3 CV analizi</li>
+                    <li class="py-1"><i class="bi bi-check-circle-fill text-success me-2"></i>3 iş eşleştirme sonucu</li>
+                    <li class="py-1"><i class="bi bi-check-circle-fill text-success me-2"></i>10 kayıtlı ilan</li>
+                    <li class="py-1"><i class="bi bi-check-circle-fill text-success me-2"></i>2 kayıtlı arama</li>
+                    <li class="py-1"><i class="bi bi-x-circle-fill text-danger me-2"></i>E-posta alert yok</li>
+                    <li class="py-1"><i class="bi bi-x-circle-fill text-danger me-2"></i>Kapak mektubu yok</li>
+                </ul>
+                <button class="btn btn-outline-secondary w-100" disabled>
+                    @(Model.CurrentPlan == "Free" ? "Aktif Plan" : "Ücretsiz")
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pro -->
+    <div class="col-md-4">
+        <div class="card h-100 @(Model.CurrentPlan == "Pro" ? "border border-primary border-2" : "") position-relative">
+            @if (Model.CurrentPlan != "Pro")
+            {
+                <div class="position-absolute top-0 start-50 translate-middle">
+                    <span class="badge bg-warning text-dark px-3 py-2 fs-6">Popüler</span>
+                </div>
+            }
+            <div class="card-body p-4">
+                @if (Model.CurrentPlan == "Pro")
+                {
+                    <span class="badge bg-primary mb-2">Mevcut Planınız</span>
+                }
+                <h4 class="fw-bold">Pro</h4>
+                <div class="display-5 fw-bold my-3">199 ₺<small class="fs-6 text-muted fw-normal">/ay</small></div>
+                <ul class="list-unstyled mb-4">
+                    <li class="py-1"><i class="bi bi-check-circle-fill text-success me-2"></i>Aylık 20 CV analizi</li>
+                    <li class="py-1"><i class="bi bi-check-circle-fill text-success me-2"></i>10 iş eşleştirme sonucu</li>
+                    <li class="py-1"><i class="bi bi-check-circle-fill text-success me-2"></i>50 kayıtlı ilan</li>
+                    <li class="py-1"><i class="bi bi-check-circle-fill text-success me-2"></i>10 kayıtlı arama</li>
+                    <li class="py-1"><i class="bi bi-check-circle-fill text-success me-2"></i>E-posta alert</li>
+                    <li class="py-1"><i class="bi bi-check-circle-fill text-success me-2"></i>Aylık 5 kapak mektubu</li>
+                </ul>
+                @if (Model.CurrentPlan == "Pro")
+                {
+                    <button class="btn btn-outline-primary w-100" disabled>Aktif Plan</button>
+                }
+                else if (Model.IsAuthenticated)
+                {
+                    <form method="post" asp-page-handler="Checkout">
+                        <input type="hidden" name="plan" value="Pro" />
+                        <button type="submit" class="btn btn-primary w-100">Pro'ya Geç →</button>
+                    </form>
+                }
+                else
+                {
+                    <a href="/Account/Register" class="btn btn-primary w-100">Kayıt Ol & Başla →</a>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- Max -->
+    <div class="col-md-4">
+        <div class="card h-100 @(Model.CurrentPlan == "Max" ? "border border-primary border-2" : "")">
+            <div class="card-body p-4">
+                @if (Model.CurrentPlan == "Max")
+                {
+                    <span class="badge bg-primary mb-2">Mevcut Planınız</span>
+                }
+                <h4 class="fw-bold">Max <span class="badge bg-dark ms-1">Pro+</span></h4>
+                <div class="display-5 fw-bold my-3">399 ₺<small class="fs-6 text-muted fw-normal">/ay</small></div>
+                <ul class="list-unstyled mb-4">
+                    <li class="py-1"><i class="bi bi-check-circle-fill text-success me-2"></i>Sınırsız CV analizi</li>
+                    <li class="py-1"><i class="bi bi-check-circle-fill text-success me-2"></i>20 iş eşleştirme sonucu</li>
+                    <li class="py-1"><i class="bi bi-check-circle-fill text-success me-2"></i>Sınırsız kayıtlı ilan</li>
+                    <li class="py-1"><i class="bi bi-check-circle-fill text-success me-2"></i>Sınırsız kayıtlı arama</li>
+                    <li class="py-1"><i class="bi bi-check-circle-fill text-success me-2"></i>E-posta alert</li>
+                    <li class="py-1"><i class="bi bi-check-circle-fill text-success me-2"></i>Sınırsız kapak mektubu</li>
+                </ul>
+                @if (Model.CurrentPlan == "Max")
+                {
+                    <button class="btn btn-outline-dark w-100" disabled>Aktif Plan</button>
+                }
+                else if (Model.IsAuthenticated)
+                {
+                    <form method="post" asp-page-handler="Checkout">
+                        <input type="hidden" name="plan" value="Max" />
+                        <button type="submit" class="btn btn-dark w-100">Max'e Geç →</button>
+                    </form>
+                }
+                else
+                {
+                    <a href="/Account/Register" class="btn btn-dark w-100">Kayıt Ol & Başla →</a>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12 text-center text-muted small">
+        <i class="bi bi-shield-lock me-1"></i> Ödemeler Iyzico ile güvenli şekilde işlenir.
+        Abonelik her ay otomatik yenilenmez — manuel yenileme gerekir.
+    </div>
+</div>

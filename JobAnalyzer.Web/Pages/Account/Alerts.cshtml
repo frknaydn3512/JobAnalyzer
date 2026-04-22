@@ -1,0 +1,138 @@
+@page
+@model JobAnalyzer.Web.Pages.Account.AlertsModel
+@{
+    ViewData["Title"] = "Job Alert'lerim";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="fw-bold mb-0"><i class="bi bi-bell-fill text-warning"></i> Job Alert'lerim</h3>
+    <span class="badge bg-primary fs-6">@Model.Alerts.Count alert</span>
+</div>
+
+<!-- Yeni Alert Ekle -->
+<div class="card p-4 mb-4 border-0 shadow-sm">
+    <h5 class="fw-bold mb-3"><i class="bi bi-plus-circle text-success"></i> Yeni Alert Ekle</h5>
+
+    @if (!string.IsNullOrEmpty(Model.SuccessMessage))
+    {
+        <div class="alert alert-success py-2">@Model.SuccessMessage</div>
+    }
+
+    <form method="post" asp-page-handler="Add">
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label fw-semibold small">Arama Kelimesi</label>
+                <input asp-for="NewAlert.Keyword" class="form-control" placeholder="Örn: React Developer, .NET, Python..." />
+                <span asp-validation-for="NewAlert.Keyword" class="text-danger small"></span>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label fw-semibold small">Konum</label>
+                <select asp-for="NewAlert.LocationFilter" class="form-select">
+                    <option value="">Tüm Konumlar</option>
+                    <option value="Remote">Remote</option>
+                    <option value="Istanbul">İstanbul</option>
+                    <option value="Ankara">Ankara</option>
+                    <option value="Izmir">İzmir</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label fw-semibold small">Bildirim Sıklığı</label>
+                <select asp-for="NewAlert.Frequency" class="form-select">
+                    <option value="daily">Her Gün</option>
+                    <option value="weekly">Haftada Bir</option>
+                </select>
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <div class="form-check">
+                    <input asp-for="NewAlert.EmailEnabled" class="form-check-input" type="checkbox" />
+                    <label class="form-check-label small">E-posta gönder</label>
+                </div>
+            </div>
+            <div class="col-md-1 d-flex align-items-end">
+                <button type="submit" class="btn btn-success w-100">Ekle</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Mevcut Alertler -->
+@if (!Model.Alerts.Any())
+{
+    <div class="card p-5 text-center text-muted">
+        <i class="bi bi-bell-slash fs-1 mb-3"></i>
+        <h5>Henüz alert oluşturmadın</h5>
+        <p>Yukarıdan bir arama kriteri ekle, yeni ilanlar geldiğinde seni haberdar edelim.</p>
+    </div>
+}
+else
+{
+    <div class="card border-0 shadow-sm">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Arama</th>
+                        <th>Konum</th>
+                        <th>Sıklık</th>
+                        <th>E-posta</th>
+                        <th>Son Kontrol</th>
+                        <th>Eşleşme</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var alert in Model.Alerts)
+                    {
+                        <tr>
+                            <td class="fw-semibold">
+                                <i class="bi bi-search text-muted me-1"></i>
+                                <a href="/Listings?SearchTerm=@alert.Keyword&LocationFilter=@alert.LocationFilter" class="text-decoration-none">
+                                    @alert.Keyword
+                                </a>
+                            </td>
+                            <td><small class="text-muted">@(alert.LocationFilter ?? "Tümü")</small></td>
+                            <td>
+                                <span class="badge @(alert.Frequency == "daily" ? "bg-success" : "bg-info") bg-opacity-75">
+                                    @(alert.Frequency == "daily" ? "Günlük" : "Haftalık")
+                                </span>
+                            </td>
+                            <td>
+                                @if (alert.EmailEnabled)
+                                {
+                                    <i class="bi bi-envelope-check text-success"></i>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-envelope-slash text-muted"></i>
+                                }
+                            </td>
+                            <td><small class="text-muted">@(alert.LastCheckedAt?.ToString("dd MMM HH:mm") ?? "Henüz kontrol edilmedi")</small></td>
+                            <td>
+                                <span class="badge bg-primary">@alert.LastMatchCount yeni ilan</span>
+                            </td>
+                            <td>
+                                <form method="post" asp-page-handler="Delete" class="d-inline">
+                                    <input type="hidden" name="alertId" value="@alert.Id" />
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+<div class="alert alert-info mt-4 small">
+    <i class="bi bi-info-circle me-1"></i>
+    <strong>Nasıl çalışır?</strong> Seçtiğin kriterlere uyan yeni ilanlar her gün saat 09:00'da kontrol edilir.
+    E-posta bildirimi için profilinde geçerli bir e-posta adresi olmalıdır.
+    E-posta servisi ayarlanmamışsa alertler yine de listelerde görünür.
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

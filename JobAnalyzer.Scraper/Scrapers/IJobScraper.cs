@@ -1,11 +1,11 @@
-ï»¿using System.Threading.Tasks;
+using System.Threading.Tasks;
 
 namespace JobAnalyzer.Scraper.Scrapers
 {
-    // BÃ¼tÃ¼n botlarÄ±mÄ±zÄ±n uymasÄ± gereken zorunlu kurallar (SÃ¶zleÅŸme)
+    // Bütün botlarımızın uyması gereken zorunlu kurallar (Sözleşme)
     public interface IJobScraper
     {
-        string ScraperName { get; } // Botun adÄ± (Ã–rn: Kariyer.net Botu)
-        Task RunAsync();            // Botu Ã§alÄ±ÅŸtÄ±racak ana metod
+        string ScraperName { get; } // Botun adı (Örn: Kariyer.net Botu)
+        Task RunAsync();            // Botu çalıştıracak ana metod
     }
 }

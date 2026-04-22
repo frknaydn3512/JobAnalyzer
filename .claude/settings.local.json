@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls /c/Users/FURKAN/Desktop/JobAnalyzer/*.env)",
+      "Bash(dotnet build:*)",
+      "Bash(taskkill /F /IM \"JobAnalyzer.Scraper.exe\")",
+      "Bash(curl -s -w \"\\\\nHTTP:%{http_code}\" \"https://nofluffjobs.com/api/search/posting?salaryCurrency=EUR\" -X POST -H \"Content-Type: application/json\" -H \"x-nfjuserid: anonymous\" -d '{\"criteria\":\"category=backend\",\"page\":1,\"pageSize\":10}')",
+      "Bash(curl -s \"https://justjoin.it\" -A \"Mozilla/5.0\")"
+    ]
+  }
+}

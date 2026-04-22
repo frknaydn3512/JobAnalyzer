@@ -1,179 +1,166 @@
-using HtmlAgilityPack;
 using JobAnalyzer.Data;
 using JobAnalyzer.Data.Models;
 using Microsoft.EntityFrameworkCore;
-using PuppeteerSharp;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace JobAnalyzer.Scraper.Scrapers
 {
-    public class JoobleScraper : IJobScraper
+    public class JoobleScraper : ScraperBase
     {
-        public string ScraperName => "Jooble";
-        private readonly string _connectionString = "Server=(localdb)\\MSSQLLocalDB;Database=JobAnalyzerDb;Trusted_Connection=True;TrustServerCertificate=True;";
+        public override string ScraperName => "Jooble Turkey";
+        
+        private readonly string _apiKey = Environment.GetEnvironmentVariable("JOOBLE_API_KEY") ?? "";
 
-        public async Task RunAsync()
+        private readonly string[] _keywords = {
+            // Türkçe
+            "yazılım geliştirici", "yazılım mühendisi", "backend geliştirici",
+            "frontend geliştirici", "mobil geliştirici", "veri mühendisi",
+            // İngilizce
+            "software developer", "software engineer",
+            "backend developer", "frontend developer",
+            "fullstack developer", "full stack developer",
+            "devops engineer", "mobile developer",
+            "golang developer",
+            "data engineer", "python developer",
+            "react developer", ".net developer",
+            "java developer", "node.js developer",
+            "flutter developer", "android developer", "ios developer",
+            "machine learning engineer", "data scientist",
+            "qa engineer", "cloud engineer",
+        };
+
+        // Jooble Türkiye için şehir bazlı arama — "Turkey" ile 0-3 sonuç geliyor,
+        // şehir adları daha iyi sonuç veriyor.
+        private readonly string[] _locations = {
+            "",           // global (tüm dünya — Türk şirketlerin İngilizce ilanları da dahil)
+            "İstanbul",
+            "Ankara",
+            "İzmir",
+            "Bursa",
+        };
+
+        public override async Task RunAsync()
         {
-            Console.WriteLine($"\n🤖 [{ScraperName}] Botu Başlatılıyor...");
-            await ShallowScrapeAsync();
-            await DeepScrapeAsync();
-            Console.WriteLine($"✅ [{ScraperName}] Bütün görevlerini tamamladı!\n");
-        }
+            Console.WriteLine($"\n🤖 [{ScraperName}] Botu Başlatıldı...");
 
-        private async Task ShallowScrapeAsync()
-        {
-            Console.WriteLine(">>> Aşama 1: Jooble İlanları Taranıyor...");
-            var browserFetcher = new BrowserFetcher();
-            await browserFetcher.DownloadAsync();
-
-            using var browser = await Puppeteer.LaunchAsync(new LaunchOptions
+            if (string.IsNullOrWhiteSpace(_apiKey))
             {
-                Headless = false,
-                DefaultViewport = null,
-                Args = new[] { "--disable-blink-features=AutomationControlled" }
-            });
-            using var page = await browser.NewPageAsync();
-            await page.SetUserAgentAsync("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
-
-            string targetUrl = "https://tr.jooble.org/SearchResult?ukw=yaz%C4%B1l%C4%B1m%20geli%C5%9Ftirici";
-
-            try
-            {
-                await page.GoToAsync(targetUrl, WaitUntilNavigation.Networkidle2);
-                await Task.Delay(3000);
-
-                // Pop-up ve çerez ekranlarını kapat
-                await page.EvaluateFunctionAsync(@"async () => {
-                    // 'Hayır' butonunu tıkla (modal'ı kapat)
-                    let btns = [...document.querySelectorAll('button')];
-                    let noBtn = btns.find(b => b.innerText.trim() === 'Hayır' || b.innerText.trim() === 'Reddet');
-                    if (noBtn) noBtn.click();
-                    await new Promise(r => setTimeout(r, 500));
-                    // Çerez reddet
-                    let cookieBtn = document.querySelector('[class*=""reject""], [class*=""decline""]');
-                    if (cookieBtn) cookieBtn.click();
-                }");
-                await Task.Delay(2000);
-
-                string htmlContent = await page.GetContentAsync();
-                var doc = new HtmlDocument();
-                doc.LoadHtml(htmlContent);
-
-                // Yeni Jooble selector: job_card_link class içeren linkler
-                var jobNodes = doc.DocumentNode.SelectNodes(
-                    "//a[contains(@class,'job_card_link')] | //a[contains(@href,'/desc/')] | //a[contains(@href,'/away/')]"
-                );
-
-                if (jobNodes != null && jobNodes.Count > 0)
-                {
-                    var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
-                    optionsBuilder.UseSqlServer(_connectionString);
-                    using var db = new AppDbContext(optionsBuilder.Options);
-
-                    int addedCount = 0;
-                    HashSet<string> processedUrls = new HashSet<string>();
-
-                    foreach (var node in jobNodes)
-                    {
-                        string hrefUrl = node.GetAttributeValue("href", "");
-                        if (string.IsNullOrWhiteSpace(hrefUrl) || hrefUrl.Length < 5) continue;
-
-                        string fullUrl = hrefUrl.StartsWith("http") ? hrefUrl : $"https://tr.jooble.org{hrefUrl}";
-                        if (processedUrls.Contains(fullUrl)) continue;
-                        processedUrls.Add(fullUrl);
-
-                        // Başlığı bul: önce h2'yi dene, yoksa link metni
-                        string title = node.SelectSingleNode(".//h2")?.InnerText.Trim()
-                                    ?? node.InnerText.Trim();
-                        title = System.Text.RegularExpressions.Regex.Replace(title, @"\s+", " ").Trim();
-                        if (string.IsNullOrWhiteSpace(title) || title.Length < 5) continue;
-
-                        if (!db.JobPostings.Any(j => j.Url == fullUrl))
-                        {
-                            db.JobPostings.Add(new JobPosting
-                            {
-                                Title = title.Length > 100 ? title.Substring(0, 100) : title,
-                                CompanyName = "Daha Sonra Çekilecek",
-                                Location = "Türkiye",
-                                Description = "Detaylar daha sonra çekilecek.",
-                                Url = fullUrl,
-                                Source = ScraperName,
-                                ExtractedSkills = "",
-                                DateScraped = DateTime.Now,
-                                DatePosted = DateTime.Now
-                            });
-                            addedCount++;
-                        }
-                    }
-                    db.SaveChanges();
-                    Console.WriteLine($"💾 Jooble Aşama 1 Bitti: {addedCount} yeni link eklendi!");
-                }
-                else
-                {
-                    Console.WriteLine("⚠️ Jooble'da ilan bulunamadı (Belki bot tespiti oldu).");
-                }
+                Console.WriteLine("⚠️ JOOBLE_API_KEY bulunamadı! Lütfen .env dosyanıza API anahtarınızı ekleyin.");
+                return;
             }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"❌ Hata: {ex.Message}");
-            }
-        }
 
-        private async Task DeepScrapeAsync()
-        {
-            Console.WriteLine(">>> Aşama 2: Jooble İlan Detayları Çekiliyor...");
+            using HttpClient client = new HttpClient();
+            client.DefaultRequestHeaders.Add("User-Agent", "JobAnalyzerBot/1.0");
+
             var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
-            optionsBuilder.UseSqlServer(_connectionString);
+            optionsBuilder.UseNpgsql(ConnectionString);
             using var db = new AppDbContext(optionsBuilder.Options);
 
-            var jobsToUpdate = db.JobPostings
-                .Where(j => j.CompanyName == "Daha Sonra Çekilecek" && j.Source == ScraperName)
-                .ToList();
-            if (jobsToUpdate.Count == 0) return;
+            var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            int totalAdded = 0;
 
-            Console.WriteLine($"   → {jobsToUpdate.Count} ilan detaylandırılacak.");
-
-            var browserFetcher = new BrowserFetcher();
-            await browserFetcher.DownloadAsync();
-            using var browser = await Puppeteer.LaunchAsync(new LaunchOptions { Headless = false, DefaultViewport = null });
-            using var page = await browser.NewPageAsync();
-            await page.SetUserAgentAsync("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
-
-            Random rnd = new Random();
-
-            foreach (var job in jobsToUpdate)
+            foreach (var location in _locations)
+            foreach (var keyword in _keywords)
             {
-                try
+                string locLabel = string.IsNullOrEmpty(location) ? "Global" : location;
+                Console.WriteLine($"\n🔍 [{locLabel}] '{keyword}' aranıyor...");
+
+                for (int page = 1; page <= 10; page++)
                 {
-                    await page.GoToAsync(job.Url, new NavigationOptions { Timeout = 30000, WaitUntil = new[] { WaitUntilNavigation.Networkidle2 } });
-                    await Task.Delay(rnd.Next(2000, 4000));
+                    try
+                    {
+                        var requestBody = new
+                        {
+                            keywords = keyword,
+                            location = location,
+                            page = page
+                        };
 
-                    string htmlContent = await page.GetContentAsync();
-                    var detailDoc = new HtmlDocument();
-                    detailDoc.LoadHtml(htmlContent);
+                        string jsonPayload = JsonSerializer.Serialize(requestBody);
+                        var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
 
-                    // Geniş hedeflerle şirket ve açıklama çek
-                    var companyNode = detailDoc.DocumentNode.SelectSingleNode(
-                        "//div[contains(@class,'company')]//a | //span[contains(@class,'company')] | //p[contains(@class,'company')] | //div[contains(@class,'job-company')]"
-                    );
-                    var descNode = detailDoc.DocumentNode.SelectSingleNode(
-                        "//div[contains(@class,'vacancy-desc')] | //div[contains(@class,'description')] | //article | //div[contains(@class,'job-description')]"
-                    );
+                        string apiUrl = $"https://jooble.org/api/{_apiKey}";
+                        var response = await client.PostAsync(apiUrl, content);
 
-                    job.CompanyName = companyNode != null
-                        ? companyNode.InnerText.Trim().Substring(0, Math.Min(companyNode.InnerText.Trim().Length, 100))
-                        : "Firma Çekilemedi";
-                    job.Description = descNode != null
-                        ? System.Text.RegularExpressions.Regex.Replace(descNode.InnerText.Trim(), @"\s+", " ")
-                        : job.Description;
+                        if (!response.IsSuccessStatusCode)
+                        {
+                            Console.WriteLine($"    ⚠️ HTTP {(int)response.StatusCode} — API Reddedildi veya kota bitti.");
+                            break;
+                        }
 
-                    db.SaveChanges();
-                    Console.WriteLine($"   - ✅ Güncellendi: {job.CompanyName.Substring(0, Math.Min(job.CompanyName.Length, 30))}");
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"   - ❌ Hata ({job.Title?.Substring(0, Math.Min(job.Title?.Length ?? 0, 20))}): {ex.Message}");
+                        byte[] bytes = await response.Content.ReadAsByteArrayAsync();
+                        string jsonResponse = Encoding.UTF8.GetString(bytes);
+                        
+                        var data = JsonSerializer.Deserialize<JoobleResponse>(jsonResponse, jsonOptions);
+
+                        if (data?.Jobs == null || data.Jobs.Count == 0)
+                        {
+                            Console.WriteLine($"    📭 Sayfa {page}: Sonuç yok.");
+                            break;
+                        }
+
+                        int pageAdded = 0;
+                        foreach (var job in data.Jobs)
+                        {
+                            if (string.IsNullOrWhiteSpace(job.Link) || string.IsNullOrWhiteSpace(job.Title)) continue;
+                            if (db.JobPostings.Any(j => j.Url == job.Link)) continue;
+
+                            string cleanDesc = System.Text.RegularExpressions.Regex.Replace(job.Snippet ?? "", "<.*?>", "");
+                            cleanDesc = System.Text.RegularExpressions.Regex.Replace(cleanDesc, @"\s+", " ").Trim();
+
+                            db.JobPostings.Add(new JobPosting
+                            {
+                                Title = job.Title.Length > 100 ? job.Title.Substring(0, 100) : job.Title,
+                                CompanyName = (job.Company ?? "Bilinmiyor").Length > 100 ? job.Company!.Substring(0, 100) : (job.Company ?? "Bilinmiyor"),
+                                Location = (job.Location ?? "Türkiye").Length > 100 ? job.Location!.Substring(0, 100) : (job.Location ?? "Türkiye"),
+                                Description = cleanDesc.Length > 4000 ? cleanDesc.Substring(0, 4000) : cleanDesc,
+                                Url = job.Link,
+                                Source = ScraperName,
+                                ExtractedSkills = "",
+                                DateScraped = DateTime.UtcNow,
+                                DatePosted = DateTime.TryParse(job.Updated, out var dt) ? DateTime.SpecifyKind(dt, DateTimeKind.Utc) : DateTime.UtcNow
+                            });
+                            pageAdded++;
+                            totalAdded++;
+                        }
+
+                        db.SaveChanges();
+                        Console.WriteLine($"    ✅ Sayfa {page}: {pageAdded} YENİ ilan ({data.Jobs.Count} bulundu)");
+                        await Task.Delay(500); // Wait between requests
+                    }
+                    catch (Exception ex)
+                    {
+                        string detail = ex.InnerException?.InnerException?.Message
+                                     ?? ex.InnerException?.Message
+                                     ?? ex.Message;
+                        Console.WriteLine($"    ⚠️ Sayfa {page} hata: {detail} — devam ediliyor...");
+                        continue;
+                    }
                 }
             }
+
+            Console.WriteLine($"\n✅ [{ScraperName}] Tamamlandı! Toplam {totalAdded} YENİ ilan eklendi.");
+        }
+
+        private class JoobleResponse
+        {
+            [JsonPropertyName("jobs")] public List<JoobleJob>? Jobs { get; set; }
+        }
+
+        private class JoobleJob
+        {
+            [JsonPropertyName("title")] public string? Title { get; set; }
+            [JsonPropertyName("location")] public string? Location { get; set; }
+            [JsonPropertyName("snippet")] public string? Snippet { get; set; }
+            [JsonPropertyName("salary")] public string? Salary { get; set; }
+            [JsonPropertyName("source")] public string? Source { get; set; }
+            [JsonPropertyName("type")] public string? Type { get; set; }
+            [JsonPropertyName("link")] public string? Link { get; set; }
+            [JsonPropertyName("company")] public string? Company { get; set; }
+            [JsonPropertyName("updated")] public string? Updated { get; set; }
+            [JsonPropertyName("id")] public long? Id { get; set; }
         }
     }
 }

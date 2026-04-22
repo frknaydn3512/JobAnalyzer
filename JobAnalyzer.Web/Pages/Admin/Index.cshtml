@@ -1,0 +1,122 @@
+@page
+@model JobAnalyzer.Web.Pages.Admin.AdminIndexModel
+@{
+    ViewData["Title"] = "Admin Paneli";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="fw-bold mb-0"><i class="bi bi-speedometer2 text-primary"></i> Admin Paneli</h3>
+    <a href="/hangfire" target="_blank" class="btn btn-outline-dark btn-sm">
+        <i class="bi bi-gear"></i> Hangfire Dashboard
+    </a>
+</div>
+
+<!-- Özet Kartlar -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card p-3 text-center border-0 bg-primary bg-opacity-10">
+            <div class="fs-2 fw-bold text-primary">@Model.TotalJobs.ToString("N0")</div>
+            <div class="text-muted small">Toplam İlan</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card p-3 text-center border-0 bg-success bg-opacity-10">
+            <div class="fs-2 fw-bold text-success">@Model.NewJobsToday</div>
+            <div class="text-muted small">Bugün Eklenen</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card p-3 text-center border-0 bg-warning bg-opacity-10">
+            <div class="fs-2 fw-bold text-warning">@Model.PendingAnalysis</div>
+            <div class="text-muted small">Analiz Bekleyen</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card p-3 text-center border-0 bg-info bg-opacity-10">
+            <div class="fs-2 fw-bold text-info">@Model.TotalUsers</div>
+            <div class="text-muted small">Toplam Kullanıcı</div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- Kaynak Bazlı İlan Sayıları -->
+    <div class="col-md-6">
+        <div class="card p-4">
+            <h5 class="fw-bold mb-3"><i class="bi bi-bar-chart text-primary"></i> Kaynak Bazlı İlanlar</h5>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Kaynak</th>
+                            <th class="text-end">İlan Sayısı</th>
+                            <th class="text-end">Analiz Edilmiş</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var s in Model.SourceStats)
+                        {
+                            <tr>
+                                <td>@s.Source</td>
+                                <td class="text-end">@s.Total</td>
+                                <td class="text-end">
+                                    <span class="text-success">@s.Analyzed</span>
+                                    <small class="text-muted"> / @s.Total</small>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Manuel Scraping Tetikle -->
+    <div class="col-md-6">
+        <div class="card p-4">
+            <h5 class="fw-bold mb-3"><i class="bi bi-play-circle text-success"></i> Manuel İşlemler</h5>
+            <p class="text-muted small">Zamanlanmış çalışmayı beklemeden hemen çalıştır.</p>
+
+            <form method="post" asp-page-handler="TriggerScraping" class="mb-3">
+                <button type="submit" class="btn btn-success w-100" @(Model.JobQueued ? "disabled" : "")>
+                    <i class="bi bi-cloud-download"></i> Tüm Scraper'ları Çalıştır
+                </button>
+            </form>
+
+            <form method="post" asp-page-handler="TriggerAnalysis">
+                <button type="submit" class="btn btn-info w-100">
+                    <i class="bi bi-cpu"></i> Groq AI Analizini Başlat (@Model.PendingAnalysis ilan bekliyor)
+                </button>
+            </form>
+
+            @if (Model.JobQueued)
+            {
+                <div class="alert alert-success mt-3 mb-0 py-2">
+                    <i class="bi bi-check-circle"></i> İş kuyruğa alındı. Hangfire Dashboard'dan takip edebilirsin.
+                </div>
+            }
+        </div>
+
+        <!-- Kullanıcı Listesi -->
+        <div class="card p-4 mt-3">
+            <h5 class="fw-bold mb-3"><i class="bi bi-people text-info"></i> Son Kullanıcılar</h5>
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead class="table-light">
+                        <tr><th>Kullanıcı</th><th>Rol</th><th>Kayıt</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var u in Model.RecentUsers)
+                        {
+                            <tr>
+                                <td class="small">@u.Email</td>
+                                <td><span class="badge bg-secondary small">@u.Role</span></td>
+                                <td class="small text-muted">@u.CreatedAt.ToString("dd MMM")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>

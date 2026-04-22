@@ -1,0 +1,48 @@
+@page
+@model JobAnalyzer.Web.Pages.Account.LoginModel
+@{
+    ViewData["Title"] = "Giriş Yap";
+}
+
+<div class="row justify-content-center">
+    <div class="col-md-5">
+        <div class="card p-4 mt-4">
+            <h3 class="mb-4 text-center fw-bold"><i class="bi bi-box-arrow-in-right text-primary"></i> Giriş Yap</h3>
+
+            @if (!string.IsNullOrEmpty(Model.ErrorMessage))
+            {
+                <div class="alert alert-danger">@Model.ErrorMessage</div>
+            }
+
+            <form method="post">
+                @Html.AntiForgeryToken()
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">E-posta</label>
+                    <input asp-for="Input.Email" class="form-control" placeholder="email@example.com" />
+                    <span asp-validation-for="Input.Email" class="text-danger small"></span>
+                </div>
+                <div class="mb-4">
+                    <label class="form-label fw-semibold">Şifre</label>
+                    <input asp-for="Input.Password" type="password" class="form-control" />
+                    <span asp-validation-for="Input.Password" class="text-danger small"></span>
+                </div>
+                <div class="mb-3 form-check">
+                    <input asp-for="Input.RememberMe" class="form-check-input" type="checkbox" />
+                    <label asp-for="Input.RememberMe" class="form-check-label">Beni hatırla</label>
+                </div>
+                <button type="submit" class="btn btn-primary w-100">Giriş Yap</button>
+            </form>
+
+            <div class="text-end mt-2">
+                <a href="/Account/ForgotPassword" class="small text-muted">Şifremi Unuttum</a>
+            </div>
+
+            <hr />
+            <p class="text-center mb-0">Hesabın yok mu? <a href="/Account/Register">Kayıt Ol</a></p>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

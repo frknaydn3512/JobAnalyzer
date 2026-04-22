@@ -1,0 +1,56 @@
+@page
+@model JobAnalyzer.Web.Pages.Account.SavedJobsModel
+@{
+    ViewData["Title"] = "Kayıtlı İlanlar";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="fw-bold mb-0"><i class="bi bi-bookmark-star text-warning"></i> Kayıtlı İlanlarım</h3>
+    <span class="badge bg-primary fs-6">@Model.SavedJobs.Count ilan</span>
+</div>
+
+@if (!Model.SavedJobs.Any())
+{
+    <div class="card p-5 text-center text-muted">
+        <i class="bi bi-bookmark fs-1 mb-3"></i>
+        <h5>Henüz kayıtlı ilanın yok</h5>
+        <p>İlan detayından <strong>Kaydet</strong> butonuna tıklayarak ilanları buraya ekleyebilirsin.</p>
+        <a href="/Listings" class="btn btn-primary mt-2">İlanlara Göz At</a>
+    </div>
+}
+else
+{
+    <div class="row g-3">
+        @foreach (var item in Model.SavedJobs)
+        {
+            <div class="col-md-6 col-lg-4">
+                <div class="card h-100 p-3">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <span class="badge bg-light text-dark small">@item.JobPosting?.Source</span>
+                        <form method="post" asp-page-handler="Remove">
+                            <input type="hidden" name="jobId" value="@item.JobPosting?.Id" />
+                            <button type="submit" class="btn btn-link btn-sm text-danger p-0" title="Kaldır">
+                                <i class="bi bi-bookmark-x fs-5"></i>
+                            </button>
+                        </form>
+                    </div>
+                    <h6 class="fw-bold mb-1">
+                        <a href="/JobDetail?id=@item.JobPosting?.Id" class="text-decoration-none text-dark">@item.JobPosting?.Title</a>
+                    </h6>
+                    <p class="text-muted small mb-1"><i class="bi bi-building"></i> @item.JobPosting?.CompanyName</p>
+                    <p class="text-muted small mb-2"><i class="bi bi-geo-alt"></i> @item.JobPosting?.Location</p>
+                    @if (!string.IsNullOrEmpty(item.JobPosting?.ExtractedSkills))
+                    {
+                        <div class="mt-auto">
+                            @foreach (var skill in item.JobPosting.ExtractedSkills!.Split(',').Take(4))
+                            {
+                                <span class="tech-badge">@skill.Trim()</span>
+                            }
+                        </div>
+                    }
+                    <p class="text-muted small mt-2 mb-0"><i class="bi bi-clock"></i> @item.SavedAt.ToString("dd MMM yyyy")</p>
+                </div>
+            </div>
+        }
+    </div>
+}

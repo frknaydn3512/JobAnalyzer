@@ -8,16 +8,37 @@
     <div class="col-md-8">
 
         <div class="card p-4 mb-4">
-            <h2 class="fw-bold text-primary"><i class="bi bi-magic"></i> AI CV Analizi</h2>
-            <p class="text-muted">PDF formatındaki özgeçmişini yükle, piyasa verileriyle kıyaslayalım.</p>
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <h2 class="fw-bold text-primary"><i class="bi bi-magic"></i> AI CV Analizi</h2>
+                    <p class="text-muted">PDF formatındaki özgeçmişini yükle, piyasa verileriyle kıyaslayalım.</p>
+                </div>
+                @if (User.Identity?.IsAuthenticated == true && Model.RemainingAnalyses >= 0)
+                {
+                    <span class="badge @(Model.RemainingAnalyses == 0 ? "bg-danger" : Model.RemainingAnalyses <= 1 ? "bg-warning text-dark" : "bg-success") fs-6">
+                        @(Model.RemainingAnalyses == 0 ? "Limit doldu" : $"{Model.RemainingAnalyses} hak kaldı")
+                    </span>
+                }
+            </div>
 
-            <form method="post" enctype="multipart/form-data">
+            @if (!string.IsNullOrEmpty(Model.LimitMessage))
+            {
+                <div class="alert alert-warning d-flex align-items-center gap-2 mt-2">
+                    <i class="bi bi-lock-fill fs-5"></i>
+                    <div>
+                        @Model.LimitMessage
+                        <a href="/Pricing" class="alert-link fw-bold ms-1">Planı Yükselt →</a>
+                    </div>
+                </div>
+            }
+
+            <form method="post" enctype="multipart/form-data" class="mt-3">
                 @Html.AntiForgeryToken()
                 <div class="mb-3">
                     <label class="form-label fw-bold">Özgeçmişinizi Seçin (PDF)</label>
                     <input type="file" asp-for="UploadedCv" class="form-control" accept=".pdf" />
                 </div>
-                <button type="submit" class="btn btn-primary w-100">
+                <button type="submit" class="btn btn-primary w-100" @(Model.RemainingAnalyses == 0 ? "disabled" : "")>
                     <i class="bi bi-search"></i> Analiz Et
                 </button>
             </form>
@@ -88,27 +109,90 @@
             </div>
         }
 
-        @if (Model.RecommendedJobs != null && Model.RecommendedJobs.Any())
-{
-    <div class="card p-4 mt-4 shadow border-primary fade-in">
-        <h4 class="fw-bold mb-3 text-primary"><i class="bi bi-briefcase-fill"></i> Sana En Uygun İlanlar</h4>
-        <p class="text-muted small">CV'ndeki yeteneklere göre piyasadan senin için seçtiğimiz en iyi eşleşmeler.</p>
-        
-        <div class="list-group">
-            @foreach (var job in Model.RecommendedJobs)
-            {
-                <a href="@job.Url" target="_blank" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="mb-1 fw-bold">@job.Title</h6>
-                        <small class="text-muted">@job.CompanyName</small><br />
-                        <small class="text-info fw-bold">Beklenen Yetenekler: @job.ExtractedSkills</small>
+        @if (Model.RecommendedJobs.Any())
+        {
+            <div class="card p-4 mt-4 shadow-sm fade-in">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h4 class="fw-bold text-primary mb-0"><i class="bi bi-briefcase-fill"></i> Sana En Uygun İlanlar</h4>
+                    <span class="badge bg-primary rounded-pill">@Model.RecommendedJobs.Count eşleşme</span>
+                </div>
+                <p class="text-muted small mb-4">IDF ağırlıklı skor — nadir skill'ler daha yüksek puan alır.</p>
+
+                <div class="d-flex flex-column gap-3">
+                    @foreach (var match in Model.RecommendedJobs)
+                    {
+                        <div class="border rounded-3 p-3 position-relative">
+                            @if (match.IsRecent)
+                            {
+                                <span class="badge bg-success position-absolute top-0 end-0 m-2">
+                                    <i class="bi bi-lightning-fill"></i> Yeni
+                                </span>
+                            }
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div class="flex-grow-1 me-3">
+                                    <h6 class="fw-bold mb-1">@match.Job.Title</h6>
+                                    <small class="text-muted">@match.Job.CompanyName &nbsp;·&nbsp; @match.Job.Location</small>
+                                    @if (!string.IsNullOrEmpty(match.Job.JobType))
+                                    {
+                                        <span class="badge bg-secondary ms-1">@match.Job.JobType</span>
+                                    }
+                                </div>
+                                <div class="text-end" style="min-width:80px">
+                                    <div class="fw-bold text-primary fs-5">%@match.MatchPercentage</div>
+                                    <small class="text-muted">uyum</small>
+                                </div>
+                            </div>
+
+                            <div class="my-2">
+                                <div class="progress" style="height:6px">
+                                    <div class="progress-bar @(match.MatchPercentage >= 70 ? "bg-success" : match.MatchPercentage >= 40 ? "bg-warning" : "bg-danger")"
+                                         style="width:@match.MatchPercentage%"></div>
+                                </div>
+                            </div>
+
+                            <div class="mb-2">
+                                @foreach (var skill in match.MatchedSkills.Take(8))
+                                {
+                                    <span class="badge bg-success bg-opacity-10 text-success border border-success me-1 mb-1">
+                                        <i class="bi bi-check2"></i> @skill
+                                    </span>
+                                }
+                            </div>
+
+                            @if (match.Job.MaxSalary > 0)
+                            {
+                                <small class="text-success fw-semibold">
+                                    <i class="bi bi-cash-stack"></i>
+                                    @((match.Job.MinSalary ?? 0).ToString("N0")) – @((match.Job.MaxSalary ?? 0).ToString("N0")) @match.Job.Currency
+                                </small>
+                            }
+
+                            <div class="mt-2 d-flex gap-2">
+                                <a href="/JobDetail/@match.Job.Id" class="btn btn-sm btn-outline-primary">
+                                    Detay
+                                </a>
+                                <a href="@match.Job.Url?utm_source=jobanalyzer&utm_medium=cv_match"
+                                   target="_blank" class="btn btn-sm btn-primary">
+                                    Başvur <i class="bi bi-box-arrow-up-right"></i>
+                                </a>
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                @if (Model.ShowUpsell)
+                {
+                    <div class="alert alert-warning mt-4 d-flex align-items-center gap-3">
+                        <i class="bi bi-stars fs-3 text-warning"></i>
+                        <div>
+                            <strong>Daha fazla eşleşme görmek ister misin?</strong>
+                            Free planda en fazla 3 sonuç görüntüleniyor.
+                            <a href="/Pricing" class="alert-link fw-bold ms-1">Pro'ya geç → 10 eşleşme gör</a>
+                        </div>
                     </div>
-                    <span class="badge bg-primary rounded-pill">İlana Git</span>
-                </a>
-            }
-        </div>
-    </div>
-}
+                }
+            </div>
+        }
 
     </div>
 </div>

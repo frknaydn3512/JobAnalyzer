@@ -1,0 +1,50 @@
+@page
+@model JobAnalyzer.Web.Pages.Account.RegisterModel
+@{
+    ViewData["Title"] = "Kayıt Ol";
+}
+
+<div class="row justify-content-center">
+    <div class="col-md-5">
+        <div class="card p-4 mt-4">
+            <h3 class="mb-4 text-center fw-bold"><i class="bi bi-person-plus text-primary"></i> Hesap Oluştur</h3>
+
+            @if (!string.IsNullOrEmpty(Model.ErrorMessage))
+            {
+                <div class="alert alert-danger">@Model.ErrorMessage</div>
+            }
+
+            <form method="post">
+                @Html.AntiForgeryToken()
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Ad Soyad</label>
+                    <input asp-for="Input.FullName" class="form-control" placeholder="Adınız Soyadınız" />
+                    <span asp-validation-for="Input.FullName" class="text-danger small"></span>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">E-posta</label>
+                    <input asp-for="Input.Email" class="form-control" placeholder="email@example.com" />
+                    <span asp-validation-for="Input.Email" class="text-danger small"></span>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Şifre</label>
+                    <input asp-for="Input.Password" type="password" class="form-control" placeholder="En az 8 karakter (büyük harf + özel karakter)" />
+                    <span asp-validation-for="Input.Password" class="text-danger small"></span>
+                </div>
+                <div class="mb-4">
+                    <label class="form-label fw-semibold">Şifre Tekrar</label>
+                    <input asp-for="Input.ConfirmPassword" type="password" class="form-control" />
+                    <span asp-validation-for="Input.ConfirmPassword" class="text-danger small"></span>
+                </div>
+                <button type="submit" class="btn btn-primary w-100">Kayıt Ol</button>
+            </form>
+
+            <hr />
+            <p class="text-center mb-0">Zaten hesabın var mı? <a href="/Account/Login">Giriş Yap</a></p>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

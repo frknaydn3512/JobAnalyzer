@@ -1,0 +1,104 @@
+@page
+@model JobAnalyzer.Web.Pages.Account.ProfileModel
+@{
+    ViewData["Title"] = "Profilim";
+}
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card p-4 mb-4">
+            <h4 class="mb-4 fw-bold"><i class="bi bi-person-circle text-primary"></i> Profilim</h4>
+
+            @if (!string.IsNullOrEmpty(Model.SuccessMessage))
+            {
+                <div class="alert alert-success">@Model.SuccessMessage</div>
+            }
+
+            <form method="post">
+                @Html.AntiForgeryToken()
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">Ad Soyad</label>
+                        <input asp-for="Input.FullName" class="form-control" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">E-posta</label>
+                        <input value="@Model.Email" class="form-control" disabled />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">Deneyim Seviyesi</label>
+                        <select asp-for="Input.Level" class="form-select">
+                            <option value="">-- Seçin --</option>
+                            <option value="Junior">Junior (0-2 yıl)</option>
+                            <option value="Mid">Mid-Level (2-5 yıl)</option>
+                            <option value="Senior">Senior (5+ yıl)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">Çalışma Tercihi</label>
+                        <select asp-for="Input.TargetLocation" class="form-select">
+                            <option value="">-- Seçin --</option>
+                            <option value="Remote">Uzaktan (Remote)</option>
+                            <option value="Istanbul">İstanbul</option>
+                            <option value="Ankara">Ankara</option>
+                            <option value="Izmir">İzmir</option>
+                            <option value="Hybrid">Hibrit</option>
+                            <option value="Any">Fark etmez</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">Beklenen Min. Maaş (TL)</label>
+                        <input asp-for="Input.ExpectedMinSalary" type="number" class="form-control" placeholder="Örn: 50000" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">Beklenen Max. Maaş (TL)</label>
+                        <input asp-for="Input.ExpectedMaxSalary" type="number" class="form-control" placeholder="Örn: 100000" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">İş Tipi Tercihi</label>
+                        <select asp-for="Input.PreferredJobType" class="form-select">
+                            <option value="">-- Fark etmez --</option>
+                            <option value="Remote">Uzaktan (Remote)</option>
+                            <option value="Hybrid">Hibrit</option>
+                            <option value="Onsite">Ofis (Onsite)</option>
+                            <option value="Any">Tümü</option>
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label fw-semibold">Skill'lerim <small class="text-muted">(virgülle ayır)</small></label>
+                        <input asp-for="Input.Skills" class="form-control" placeholder="C#, .NET, React, SQL..." />
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary mt-4">Kaydet</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card p-4">
+            <h5 class="fw-bold mb-3"><i class="bi bi-shield-check text-success"></i> Plan Bilgisi</h5>
+            <div class="mb-2">
+                <span class="badge bg-primary fs-6">@(Model.Plan ?? "Free") Plan</span>
+            </div>
+            @if (Model.Plan == "Free")
+            {
+                <p class="text-muted small mt-2">CV analizi: <strong>3 hak/ay</strong></p>
+                <a href="/Pricing" class="btn btn-warning btn-sm w-100 mt-2">Pro'ya Geç →</a>
+            }
+            else
+            {
+                <p class="text-muted small mt-2">Sınırsız CV analizi</p>
+                <p class="text-muted small">Job Alert aktif</p>
+            }
+        </div>
+
+        @if (!string.IsNullOrEmpty(Model.LastAnalysis))
+        {
+            <div class="card p-4 mt-3">
+                <h5 class="fw-bold mb-3"><i class="bi bi-cpu text-primary"></i> Son CV Analizi</h5>
+                <p class="small text-muted">@Model.LastAnalyzedAt?.ToString("dd MMM yyyy HH:mm")</p>
+                <p class="small">@Model.LastAnalysis.Substring(0, Math.Min(200, Model.LastAnalysis.Length))...</p>
+            </div>
+        }
+    </div>
+</div>

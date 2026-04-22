@@ -1,186 +1,133 @@
-using HtmlAgilityPack;
 using JobAnalyzer.Data;
 using JobAnalyzer.Data.Models;
 using Microsoft.EntityFrameworkCore;
-using PuppeteerSharp;
+using System.Xml.Linq;
 
 namespace JobAnalyzer.Scraper.Scrapers
 {
-    public class WeWorkRemotelyScraper : IJobScraper
+    /// <summary>
+    /// WeWorkRemotely - RSS feed tabanlı (Puppeteer gerektirmez, Cloudflare sorunu yok)
+    /// RSS URL: https://weworkremotely.com/categories/remote-programming-jobs.rss
+    /// </summary>
+    public class WeWorkRemotelyScraper : ScraperBase
     {
-        public string ScraperName => "WeWorkRemotely";
-        private readonly string _connectionString = "Server=(localdb)\\MSSQLLocalDB;Database=JobAnalyzerDb;Trusted_Connection=True;TrustServerCertificate=True;";
+        public override string ScraperName => "WeWorkRemotely";
 
-        public async Task RunAsync()
+        // WWR'ın herkese açık RSS feed'leri
+        private readonly (string url, string label)[] _feeds =
         {
-            Console.WriteLine($"\n🤖 [{ScraperName}] Botu Çalıştırılıyor... (Hedef: Global Remote İlanlar)");
-            await ShallowScrapeAsync();
-            await DeepScrapeAsync();
-            Console.WriteLine($"✅ [{ScraperName}] Bütün görevlerini tamamladı!\n");
-        }
+            ("https://weworkremotely.com/categories/remote-programming-jobs.rss",         "Programming"),
+            ("https://weworkremotely.com/categories/remote-devops-sysadmin-jobs.rss",     "DevOps"),
+            ("https://weworkremotely.com/categories/remote-full-stack-programming-jobs.rss", "Full Stack"),
+            ("https://weworkremotely.com/categories/remote-back-end-programming-jobs.rss", "Back-End"),
+            ("https://weworkremotely.com/categories/remote-front-end-programming-jobs.rss","Front-End"),
+        };
 
-        private async Task ShallowScrapeAsync()
+        public override async Task RunAsync()
         {
-            Console.WriteLine(">>> Aşama 1: Global Programlama İlanları Taranıyor...");
+            Console.WriteLine($"\n🤖 [{ScraperName}] RSS Feed Modu Başlatıldı...");
 
-            var browserFetcher = new BrowserFetcher();
-            await browserFetcher.DownloadAsync();
+            using HttpClient client = new HttpClient();
+            client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (compatible; JobAnalyzerBot/1.0)");
+            client.Timeout = TimeSpan.FromSeconds(30);
 
-            using var browser = await Puppeteer.LaunchAsync(new LaunchOptions
-            {
-                Headless = false,
-                DefaultViewport = null,
-                Args = new[] { "--disable-blink-features=AutomationControlled" }
-            });
-            using var page = await browser.NewPageAsync();
-            await page.SetUserAgentAsync("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
-
-            string targetUrl = "https://weworkremotely.com/categories/remote-programming-jobs";
-
-            try
-            {
-                await page.GoToAsync(targetUrl, WaitUntilNavigation.Networkidle2);
-                await Task.Delay(3000);
-
-                string htmlContent = await page.GetContentAsync();
-                HtmlDocument document = new HtmlDocument();
-                document.LoadHtml(htmlContent);
-
-                // Güncel WWR selectors (inspect ile doğrulandı):
-                // Linkler: a.listing-link veya a.listing-link--unlocked
-                // Başlık: h3 içindeki span
-                var jobNodes = document.DocumentNode.SelectNodes(
-                    "//a[contains(@class,'listing-link')] | //article//ul//li//a[contains(@href,'/remote-jobs/')]"
-                );
-
-                if (jobNodes != null && jobNodes.Count > 0)
-                {
-                    var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
-                    optionsBuilder.UseSqlServer(_connectionString);
-                    using var db = new AppDbContext(optionsBuilder.Options);
-
-                    int addedCount = 0;
-                    HashSet<string> processedUrls = new HashSet<string>();
-
-                    foreach (var node in jobNodes)
-                    {
-                        string jobUrl = node.GetAttributeValue("href", "");
-                        if (jobUrl.Length < 10) continue;
-
-                        // Sadece tekil ilan sayfaları al (/remote-jobs/ içermeli)
-                        if (!jobUrl.Contains("/remote-jobs/") && !jobUrl.Contains("/job/")) continue;
-
-                        string fullUrl = jobUrl.StartsWith("http") ? jobUrl : $"https://weworkremotely.com{jobUrl}";
-                        if (processedUrls.Contains(fullUrl)) continue;
-                        processedUrls.Add(fullUrl);
-
-                        // Başlık: h3 > span içinden al
-                        var titleSpan = node.SelectSingleNode(".//h3//span[not(contains(@class,'region'))] | .//span[contains(@class,'title')]");
-                        string jobTitle = titleSpan?.InnerText.Trim() ?? node.InnerText.Replace("\n", " ").Replace("\r", "").Trim();
-                        jobTitle = System.Text.RegularExpressions.Regex.Replace(jobTitle, @"\s+", " ").Trim();
-
-                        if (string.IsNullOrWhiteSpace(jobTitle) || jobTitle.Length < 5) continue;
-
-                        // Şirket adı: p tag (linkin direkt çocuğu)
-                        var companyPara = node.SelectSingleNode(".//p[not(contains(@class,'tag'))]");
-                        string companyName = companyPara?.InnerText.Trim() ?? "WWR İlanı";
-
-                        if (!db.JobPostings.Any(j => j.Url == fullUrl))
-                        {
-                            db.JobPostings.Add(new JobPosting
-                            {
-                                Title = jobTitle.Length > 100 ? jobTitle.Substring(0, 100) : jobTitle,
-                                CompanyName = companyName.Length > 100 ? companyName.Substring(0, 100) : companyName,
-                                Location = "Global / Remote",
-                                Description = "Detaylar çekilecek...",
-                                Url = fullUrl,
-                                Source = ScraperName,
-                                ExtractedSkills = "",
-                                DateScraped = DateTime.Now,
-                                DatePosted = DateTime.Now
-                            });
-                            addedCount++;
-                        }
-                    }
-                    db.SaveChanges();
-                    Console.WriteLine($"💾 Yüzeysel Kazıma Bitti: {addedCount} YENİ ilan eklendi.");
-                }
-                else
-                {
-                    Console.WriteLine("⚠️ WeWorkRemotely'de ilan bulunamadı.");
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"❌ Hata: {ex.Message}");
-            }
-        }
-
-        private async Task DeepScrapeAsync()
-        {
-            Console.WriteLine(">>> Aşama 2: Detaylar (Açıklamalar) Çekiliyor...");
             var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
-            optionsBuilder.UseSqlServer(_connectionString);
+            optionsBuilder.UseNpgsql(ConnectionString);
             using var db = new AppDbContext(optionsBuilder.Options);
 
-            var jobsToUpdate = db.JobPostings
-                .Where(j => j.Description == "Detaylar çekilecek..." && j.Source == ScraperName)
-                .ToList();
-            if (jobsToUpdate.Count == 0) return;
+            int totalAdded = 0;
 
-            Console.WriteLine($"   → {jobsToUpdate.Count} ilan detaylandırılacak.");
-
-            using var browser = await Puppeteer.LaunchAsync(new LaunchOptions { Headless = false, DefaultViewport = null });
-            using var page = await browser.NewPageAsync();
-            await page.SetUserAgentAsync("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
-
-            Random rnd = new Random();
-
-            foreach (var job in jobsToUpdate)
+            foreach (var (feedUrl, label) in _feeds)
             {
+                Console.WriteLine($"\n  📡 [{label}] RSS çekiliyor...");
                 try
                 {
-                    await page.GoToAsync(job.Url, new NavigationOptions { Timeout = 30000, WaitUntil = new[] { WaitUntilNavigation.Networkidle2 } });
-                    await Task.Delay(rnd.Next(3000, 6000));
+                    string xml = await client.GetStringAsync(feedUrl);
+                    var rss = XDocument.Parse(xml);
+                    XNamespace content = "http://purl.org/rss/1.0/modules/content/";
 
-                    // Cloudflare kontrolü — başlık elementini bekle
-                    try
+                    var items = rss.Descendants("item").ToList();
+                    if (items.Count == 0)
                     {
-                        await page.WaitForSelectorAsync("h1, .listing-header, .job-listing", new WaitForSelectorOptions { Timeout = 15000 });
-                    }
-                    catch
-                    {
-                        Console.WriteLine($"⚠️ Sayfa yüklenemedi, atlanıyor: {job.Title}");
+                        Console.WriteLine($"  📭 Sonuç yok.");
                         continue;
                     }
 
-                    string htmlContent = await page.GetContentAsync();
-                    HtmlDocument detailDoc = new HtmlDocument();
-                    detailDoc.LoadHtml(htmlContent);
+                    Console.WriteLine($"  🎉 {items.Count} ilan bulundu!");
+                    int feedAdded = 0;
 
-                    var companyNode = detailDoc.DocumentNode.SelectSingleNode(
-                        "//div[contains(@class,'company-card')]//h2 | //h2[contains(@class,'company')] | //header//h2"
-                    );
-                    var descNode = detailDoc.DocumentNode.SelectSingleNode(
-                        "//div[contains(@class,'listing-container')] | //div[contains(@id,'job-listing-show-container')] | //div[contains(@class,'job-description')]"
-                    );
+                    foreach (var item in items)
+                    {
+                        // RSS link: <link> elemanı
+                        string jobUrl = item.Element("link")?.Value?.Trim() ?? "";
+                        if (string.IsNullOrWhiteSpace(jobUrl)) continue;
 
-                    string companyName = companyNode != null ? companyNode.InnerText.Trim() : job.CompanyName ?? "Firma Çekilemedi";
-                    string fullDescription = descNode != null
-                        ? System.Text.RegularExpressions.Regex.Replace(descNode.InnerText.Trim(), @"\s+", " ")
-                        : job.Description;
+                        // Başlık formatı: "Company | Job Title"
+                        string rawTitle = item.Element("title")?.Value?.Trim() ?? "";
+                        rawTitle = System.Net.WebUtility.HtmlDecode(rawTitle);
 
-                    job.CompanyName = companyName.Length > 100 ? companyName.Substring(0, 100) : companyName;
-                    job.Description = fullDescription;
+                        string company = "WeWorkRemotely İlanı";
+                        string title = rawTitle;
+
+                        if (rawTitle.Contains(" | "))
+                        {
+                            int sep = rawTitle.IndexOf(" | ");
+                            company = rawTitle.Substring(0, sep).Trim();
+                            title = rawTitle.Substring(sep + 3).Trim();
+                        }
+                        else if (rawTitle.Contains(": "))
+                        {
+                            // Bazen "Company: Title" formatı da kullanılıyor
+                            int sep = rawTitle.IndexOf(": ");
+                            company = rawTitle.Substring(0, sep).Trim();
+                            title = rawTitle.Substring(sep + 2).Trim();
+                        }
+
+                        if (string.IsNullOrWhiteSpace(title) || title.Length < 3) continue;
+
+                        // Açıklama: <description> veya <content:encoded>
+                        string rawDesc = item.Element(content + "encoded")?.Value
+                                      ?? item.Element("description")?.Value
+                                      ?? "";
+                        string cleanDesc = System.Text.RegularExpressions.Regex.Replace(rawDesc, "<.*?>", "");
+                        cleanDesc = System.Text.RegularExpressions.Regex.Replace(cleanDesc, @"\s+", " ").Trim();
+                        if (cleanDesc.Length > 4000) cleanDesc = cleanDesc.Substring(0, 4000);
+
+                        // Yayın tarihi — RSS pubDate offset içerir (+0000), DateTimeOffset ile UTC'ye çevir
+                        string pubDateStr = item.Element("pubDate")?.Value ?? "";
+                        DateTime datePosted = DateTimeOffset.TryParse(pubDateStr, out var dto) ? dto.UtcDateTime : DateTime.UtcNow;
+
+                        if (db.JobPostings.Any(j => j.Url == jobUrl)) continue;
+
+                        db.JobPostings.Add(new JobPosting
+                        {
+                            Title = title.Length > 100 ? title.Substring(0, 100) : title,
+                            CompanyName = company.Length > 100 ? company.Substring(0, 100) : company,
+                            Location = "Global / Remote",
+                            Description = cleanDesc,
+                            Url = jobUrl,
+                            Source = ScraperName,
+                            ExtractedSkills = "",
+                            DateScraped = DateTime.UtcNow,
+                            DatePosted = datePosted
+                        });
+                        feedAdded++;
+                        totalAdded++;
+                        Console.WriteLine($"  💾 {company} | {title.Substring(0, Math.Min(title.Length, 50))}");
+                    }
 
                     db.SaveChanges();
-                    Console.WriteLine($"   - ✅ Güncellendi: {job.CompanyName?.Substring(0, Math.Min(job.CompanyName?.Length ?? 0, 25))} | {job.Title?.Substring(0, Math.Min(job.Title?.Length ?? 0, 25))}");
+                    Console.WriteLine($"  ✅ [{label}]: {feedAdded} YENİ ilan eklendi.");
+                    await Task.Delay(500);
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"   - ❌ Hata: {ex.Message}");
+                    Console.WriteLine($"  ❌ Hata ({label}): {ex.Message}");
                 }
             }
+
+            Console.WriteLine($"\n✅ [{ScraperName}] Tamamlandı! Toplam {totalAdded} YENİ ilan eklendi.");
         }
     }
 }
+

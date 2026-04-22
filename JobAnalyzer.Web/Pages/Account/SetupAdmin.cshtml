@@ -1,0 +1,42 @@
+@page
+@model JobAnalyzer.Web.Pages.Account.SetupAdminModel
+@{
+    ViewData["Title"] = "Admin Kurulumu";
+}
+
+<div class="row justify-content-center">
+    <div class="col-md-5">
+        <div class="card p-4 mt-4">
+            <h3 class="mb-2 text-center fw-bold"><i class="bi bi-shield-lock text-danger"></i> İlk Admin Kurulumu</h3>
+            <p class="text-muted text-center small mb-4">Bu sayfa sadece hiç admin yoksa çalışır.</p>
+
+            @if (!string.IsNullOrEmpty(Model.Message))
+            {
+                <div class="alert @(Model.IsSuccess ? "alert-success" : "alert-danger")">@Model.Message</div>
+            }
+
+            @if (!Model.AlreadyHasAdmin)
+            {
+                <form method="post">
+                    @Html.AntiForgeryToken()
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">E-posta</label>
+                        <input asp-for="Input.Email" class="form-control" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Şifre</label>
+                        <input asp-for="Input.Password" type="password" class="form-control" />
+                    </div>
+                    <button type="submit" class="btn btn-danger w-100">Admin Hesabı Oluştur</button>
+                </form>
+            }
+            else
+            {
+                <div class="text-center">
+                    <p class="text-success fw-semibold">Sistemde zaten bir admin var.</p>
+                    <a href="/" class="btn btn-primary">Ana Sayfaya Dön</a>
+                </div>
+            }
+        </div>
+    </div>
+</div>

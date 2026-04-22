@@ -6,12 +6,23 @@ using System.Text.Json.Serialization;
 
 namespace JobAnalyzer.Scraper.Scrapers
 {
-    public class RemoteOKScraper : IJobScraper
+    public class RemoteOKScraper : ScraperBase
     {
-        public string ScraperName => "RemoteOK (Global Remote)";
-        private readonly string _connectionString = "Server=(localdb)\\MSSQLLocalDB;Database=JobAnalyzerDb;Trusted_Connection=True;TrustServerCertificate=True;";
+        public override string ScraperName => "RemoteOK (Global Remote)";
 
-        public async Task RunAsync()
+        private static readonly string[] _softwareKeywords = {
+            "software", "developer", "engineer", "backend", "frontend", "fullstack", "full-stack",
+            "web", "mobile", "devops", "cloud", "data", "python", "java", "react", "angular",
+            "node", ".net", "php", "qa", "test", "typescript", "kotlin", "swift", "flutter",
+            "android", "ios", "golang", "api", "ai", "machine learning", "programmer", "architect",
+            "infrastructure", "platform", "sre", "security", "tech", "cto", "cio",
+            "yazılım", "geliştirici", "mühendis"
+        };
+
+        private static bool IsSoftwareRelated(string title, string tags) =>
+            _softwareKeywords.Any(kw => (title + " " + tags).ToLowerInvariant().Contains(kw));
+
+        public override async Task RunAsync()
         {
             Console.WriteLine($"\n🤖 [{ScraperName}] Botu Çalıştırılıyor... (Ücretsiz JSON API!)");
 
@@ -44,7 +55,7 @@ namespace JobAnalyzer.Scraper.Scrapers
                 }
 
                 var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
-                optionsBuilder.UseSqlServer(_connectionString);
+                optionsBuilder.UseNpgsql(ConnectionString);
                 using var db = new AppDbContext(optionsBuilder.Options);
 
                 int addedCount = 0;
@@ -73,6 +84,9 @@ namespace JobAnalyzer.Scraper.Scrapers
                         if (!jobUrl.StartsWith("http"))
                             jobUrl = "https://remoteok.com" + jobUrl;
 
+                        // Sadece yazılım ilanlarını al
+                        if (!IsSoftwareRelated(title, skills)) continue;
+
                         // Aynı ilan varsa ekleme
                         if (db.JobPostings.Any(j => j.Url == jobUrl)) continue;
 
@@ -89,17 +103,17 @@ namespace JobAnalyzer.Scraper.Scrapers
                             Url = jobUrl,
                             Source = ScraperName,
                             ExtractedSkills = skills.Length > 500 ? skills.Substring(0, 500) : skills,
-                            DateScraped = DateTime.Now,
-                            DatePosted = DateTime.Now
+                            DateScraped = DateTime.UtcNow,
+                            DatePosted = DateTime.UtcNow
                         };
 
                         db.JobPostings.Add(newJob);
                         addedCount++;
                         Console.WriteLine($"   ✅ {company} | {title}");
                     }
-                    catch
+                    catch (Exception itemEx)
                     {
-                        // Bozuk ilan kaydını atla
+                        Console.WriteLine($"   ⚠️ İlan parse hatası: {itemEx.Message}");
                     }
                 }
 
@@ -113,3 +127,4 @@ namespace JobAnalyzer.Scraper.Scrapers
         }
     }
 }
+

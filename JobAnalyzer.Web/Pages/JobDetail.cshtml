@@ -19,11 +19,24 @@
             <div class="d-flex justify-content-between align-items-start mb-4 border-bottom pb-3">
                 <div>
                     <h2 class="fw-bold text-dark mb-2">@Model.Job.Title</h2>
-                    <span class="badge bg-primary fs-6 me-2">Platform: Kariyer/Bionluk/LinkedIN</span>
-                    </div>
-                <a href="@Model.Job.Url" target="_blank" class="btn btn-primary btn-lg shadow-sm">
-                    Orijinal İlana Git <i class="bi bi-box-arrow-up-right"></i>
-                </a>
+                    <span class="badge bg-primary fs-6 me-2">@Model.Job.Source</span>
+                    <span class="badge bg-secondary fs-6">@Model.Job.Location</span>
+                </div>
+                <div class="d-flex gap-2">
+                    @if (User.Identity?.IsAuthenticated == true)
+                    {
+                        <form method="post" asp-page-handler="ToggleSave">
+                            <input type="hidden" name="id" value="@Model.Job.Id" />
+                            <button type="submit" class="btn @(Model.IsSaved ? "btn-warning" : "btn-outline-warning") btn-lg">
+                                <i class="bi bi-bookmark@(Model.IsSaved ? "-fill" : "")"></i>
+                                @(Model.IsSaved ? "Kaydedildi" : "Kaydet")
+                            </button>
+                        </form>
+                    }
+                    <a href="@Model.Job.Url" target="_blank" class="btn btn-primary btn-lg shadow-sm">
+                        Orijinal İlana Git <i class="bi bi-box-arrow-up-right"></i>
+                    </a>
+                </div>
             </div>
 
             <h5 class="fw-bold mt-4 text-primary"><i class="bi bi-cpu"></i> AI Tarafından Çıkarılan Yetenekler</h5>
@@ -55,11 +68,31 @@
 
             <div class="mt-5 text-center bg-primary bg-opacity-10 p-5 rounded border border-primary">
     <h3 class="fw-bold text-primary mb-3">Bu İlan Tam Benlik mi Diyorsun?</h3>
-    
-    <button id="btnGenerate" onclick="generateLetter(@Model.Job.Id)" class="btn btn-info btn-lg fw-bold shadow px-5 py-3">
-        <span id="btnText"><i class="bi bi-magic fs-4"></i> Bana Özel Önyazı Yazdır</span>
-        <span id="btnLoader" class="spinner-border spinner-border-sm d-none"></span>
-    </button>
+
+    @if (!User.Identity?.IsAuthenticated ?? true)
+    {
+        <a href="/Account/Login" class="btn btn-info btn-lg fw-bold shadow px-5 py-3">
+            <i class="bi bi-box-arrow-in-right fs-4"></i> Giriş Yap & Önyazı Oluştur
+        </a>
+    }
+    else if (!Model.CanGenerateLetter)
+    {
+        <div class="alert alert-warning d-inline-block mb-3 text-start">
+            <i class="bi bi-lock-fill me-2"></i>Bu ay kapak mektubu limitinize ulaştınız.
+            <a href="/Pricing" class="alert-link fw-bold ms-1">Pro'ya Geç →</a>
+        </div>
+        <br />
+        <button class="btn btn-secondary btn-lg fw-bold px-5 py-3" disabled>
+            <i class="bi bi-magic fs-4"></i> Bana Özel Önyazı Yazdır
+        </button>
+    }
+    else
+    {
+        <button id="btnGenerate" onclick="generateLetter(@Model.Job.Id)" class="btn btn-info btn-lg fw-bold shadow px-5 py-3">
+            <span id="btnText"><i class="bi bi-magic fs-4"></i> Bana Özel Önyazı Yazdır</span>
+            <span id="btnLoader" class="spinner-border spinner-border-sm d-none"></span>
+        </button>
+    }
 
     <div id="letterResult" class="mt-4 d-none text-start">
         <label class="fw-bold text-dark">Size Özel Önyazı:</label>
@@ -76,7 +109,6 @@
         const resultArea = document.getElementById('letterResult');
         const txtArea = document.getElementById('txtLetter');
 
-        // Loading Başlat
         btn.disabled = true;
         text.classList.add('d-none');
         loader.classList.remove('d-none');
@@ -91,17 +123,19 @@
 
             if (response.ok) {
                 const data = await response.text();
-                txtArea.value = data;
-                resultArea.classList.remove('d-none');
-                // Sayfayı aşağı kaydır ki sonucu görsün
-                resultArea.scrollIntoView({ behavior: 'smooth' });
+                if (data.startsWith('__LIMIT__:')) {
+                    alert(data.replace('__LIMIT__:', '') + '\nPlan yükseltmek için: /Pricing');
+                } else {
+                    txtArea.value = data;
+                    resultArea.classList.remove('d-none');
+                    resultArea.scrollIntoView({ behavior: 'smooth' });
+                }
             } else {
                 alert("Önyazı oluşturulurken bir hata oluştu.");
             }
         } catch (err) {
             alert("Sistem hatası: " + err);
         } finally {
-            // Loading Bitir
             btn.disabled = false;
             text.classList.remove('d-none');
             loader.classList.add('d-none');

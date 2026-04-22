@@ -10,60 +10,45 @@ namespace JobAnalyzer.Scraper.Scrapers
     /// Remotive.com - Tüm kategoriler + çoklu sayfa
     /// API: https://remotive.com/api/remote-jobs?category=X&limit=100
     /// </summary>
-    public class RemotiveScraper : IJobScraper
+    public class RemotiveScraper : ScraperBase
     {
-        public string ScraperName => "Remotive (Global Remote)";
-        private readonly string _connectionString = "Server=(localdb)\\MSSQLLocalDB;Database=JobAnalyzerDb;Trusted_Connection=True;TrustServerCertificate=True;";
+        public override string ScraperName => "Remotive (Global Remote)";
 
-        // Remotive'in tüm yazılım/tech kategorileri
-        private readonly string[] _categories = {
-            "software-dev",
-            "devops-sysadmin",
-            "data",
-            "qa",
-            "product",
-            "design",
-            "backend",
-            "frontend",
-            "mobile",
-            "machine-learning",
+        // Remotive ücretsiz API artık kategori fark etmeksizin aynı seti döndürüyor.
+        // Tek call ile tüm mevcut ilanları çek, kategori filtresi olmadan.
+        private readonly string[] _techCategories = {
+            "software-dev", "devops-sysadmin", "data", "qa",
+            "backend", "frontend", "mobile", "machine-learning"
         };
 
-        public async Task RunAsync()
+        public override async Task RunAsync()
         {
-            Console.WriteLine($"\n🤖 [{ScraperName}] Tüm kategoriler çekiliyor...");
+            Console.WriteLine($"\n🤖 [{ScraperName}] API çekiliyor...");
 
             using HttpClient client = new HttpClient();
             client.DefaultRequestHeaders.Add("User-Agent", "JobAnalyzerBot/1.0");
 
             var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
-            optionsBuilder.UseSqlServer(_connectionString);
+            optionsBuilder.UseNpgsql(ConnectionString);
             using var db = new AppDbContext(optionsBuilder.Options);
 
             var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
             int totalAdded = 0;
 
-            foreach (var category in _categories)
+            // Önce kategorisiz genel sorgu — tüm ilanları getir
+            try
             {
-                Console.WriteLine($"\n  📂 Kategori: {category}");
-                try
+                string apiUrl = "https://remotive.com/api/remote-jobs?limit=200";
+                Console.WriteLine($"  📡 {apiUrl}");
+                var response = await client.GetAsync(apiUrl);
+                response.EnsureSuccessStatusCode();
+
+                string json = await response.Content.ReadAsStringAsync();
+                var data = JsonSerializer.Deserialize<RemotiveApiResponse>(json, jsonOptions);
+
+                if (data?.Jobs != null && data.Jobs.Count > 0)
                 {
-                    // limit=200 ile maksimum ilan çek
-                    string apiUrl = $"https://remotive.com/api/remote-jobs?category={category}&limit=200";
-                    var response = await client.GetAsync(apiUrl);
-                    response.EnsureSuccessStatusCode();
-
-                    string json = await response.Content.ReadAsStringAsync();
-                    var data = JsonSerializer.Deserialize<RemotiveApiResponse>(json, jsonOptions);
-
-                    if (data?.Jobs == null || data.Jobs.Count == 0)
-                    {
-                        Console.WriteLine($"  📭 Sonuç yok.");
-                        continue;
-                    }
-
                     Console.WriteLine($"  🎉 {data.Jobs.Count} ilan bulundu!");
-                    int catAdded = 0;
 
                     foreach (var job in data.Jobs)
                     {
@@ -82,8 +67,62 @@ namespace JobAnalyzer.Scraper.Scrapers
                             Url = job.Url,
                             Source = ScraperName,
                             ExtractedSkills = string.Join(",", job.Tags ?? new List<string>()),
-                            DateScraped = DateTime.Now,
-                            DatePosted = job.PublicationDate != default ? job.PublicationDate : DateTime.Now
+                            DateScraped = DateTime.UtcNow,
+                            DatePosted = job.PublicationDate != default ? DateTime.SpecifyKind(job.PublicationDate, DateTimeKind.Utc) : DateTime.UtcNow
+                        });
+                        totalAdded++;
+                    }
+                    db.SaveChanges();
+                }
+                else
+                {
+                    Console.WriteLine("  📭 Genel sorgu sonuç vermedi.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"  ❌ Genel sorgu hatası: {ex.Message}");
+            }
+
+            // Kategorili sorgular — API aynı seti döndürse bile yeni ilanlar olabilir
+            foreach (var category in _techCategories)
+            {
+                Console.WriteLine($"\n  📂 Kategori: {category}");
+                try
+                {
+                    string apiUrl = $"https://remotive.com/api/remote-jobs?category={category}&limit=200";
+                    var response = await client.GetAsync(apiUrl);
+                    response.EnsureSuccessStatusCode();
+
+                    string json = await response.Content.ReadAsStringAsync();
+                    var data = JsonSerializer.Deserialize<RemotiveApiResponse>(json, jsonOptions);
+
+                    if (data?.Jobs == null || data.Jobs.Count == 0)
+                    {
+                        Console.WriteLine($"  📭 Sonuç yok.");
+                        continue;
+                    }
+
+                    int catAdded = 0;
+                    foreach (var job in data.Jobs)
+                    {
+                        if (string.IsNullOrWhiteSpace(job.Url) || string.IsNullOrWhiteSpace(job.Title)) continue;
+                        if (db.JobPostings.Any(j => j.Url == job.Url)) continue;
+
+                        string cleanDesc = System.Text.RegularExpressions.Regex.Replace(job.Description ?? "", "<.*?>", "");
+                        cleanDesc = System.Text.RegularExpressions.Regex.Replace(cleanDesc, @"\s+", " ").Trim();
+
+                        db.JobPostings.Add(new JobPosting
+                        {
+                            Title = job.Title.Length > 100 ? job.Title.Substring(0, 100) : job.Title,
+                            CompanyName = (job.CompanyName ?? "Bilinmiyor").Length > 100 ? job.CompanyName!.Substring(0, 100) : (job.CompanyName ?? "Bilinmiyor"),
+                            Location = (job.CandidateRequiredLocation ?? "Remote").Length > 100 ? job.CandidateRequiredLocation!.Substring(0, 100) : (job.CandidateRequiredLocation ?? "Remote"),
+                            Description = cleanDesc.Length > 4000 ? cleanDesc.Substring(0, 4000) : cleanDesc,
+                            Url = job.Url,
+                            Source = ScraperName,
+                            ExtractedSkills = string.Join(",", job.Tags ?? new List<string>()),
+                            DateScraped = DateTime.UtcNow,
+                            DatePosted = job.PublicationDate != default ? DateTime.SpecifyKind(job.PublicationDate, DateTimeKind.Utc) : DateTime.UtcNow
                         });
                         catAdded++;
                         totalAdded++;
@@ -91,7 +130,7 @@ namespace JobAnalyzer.Scraper.Scrapers
 
                     db.SaveChanges();
                     Console.WriteLine($"  ✅ {catAdded} YENİ ilan eklendi.");
-                    await Task.Delay(500); // API'ye nazik ol
+                    await Task.Delay(300);
                 }
                 catch (Exception ex)
                 {

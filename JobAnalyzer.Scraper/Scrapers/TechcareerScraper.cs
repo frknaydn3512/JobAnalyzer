@@ -6,12 +6,11 @@ using PuppeteerSharp;
 
 namespace JobAnalyzer.Scraper.Scrapers
 {
-    public class TechcareerScraper : IJobScraper
+    public class TechcareerScraper : ScraperBase
     {
-        public string ScraperName => "Techcareer";
-        private readonly string _connectionString = "Server=(localdb)\\MSSQLLocalDB;Database=JobAnalyzerDb;Trusted_Connection=True;TrustServerCertificate=True;";
+        public override string ScraperName => "Techcareer";
 
-        public async Task RunAsync()
+        public override async Task RunAsync()
         {
             Console.WriteLine($"\n🤖 [{ScraperName}] Botu Çalıştırılıyor...");
             await ShallowScrapeAsync();
@@ -24,160 +23,241 @@ namespace JobAnalyzer.Scraper.Scrapers
             Console.WriteLine(">>> Aşama 1: Techcareer İlanları Taranıyor...");
 
             var browserFetcher = new BrowserFetcher();
-            await browserFetcher.DownloadAsync();
+            try { await browserFetcher.DownloadAsync(); }
+            catch (Exception fetchEx)
+            {
+                Console.WriteLine($"  ⚠️ Chromium indirme hatası: {fetchEx.Message}");
+                Console.WriteLine("  💡 İnternet bağlantısını kontrol edin veya chromium'u manuel yükleyin.");
+                return;
+            }
 
             var launchOptions = new LaunchOptions { Headless = false, DefaultViewport = null, Args = new[] { "--disable-blink-features=AutomationControlled" } };
             using var browser = await Puppeteer.LaunchAsync(launchOptions);
             using var page = await browser.NewPageAsync();
             await page.SetUserAgentAsync("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
 
-            string targetUrl = "https://www.techcareer.net/jobs";
+            var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
+            optionsBuilder.UseNpgsql(ConnectionString);
+            using var db = new AppDbContext(optionsBuilder.Options);
 
-            try
+            int totalAdded = 0;
+            int consecutiveEmptyPages = 0;
+            HashSet<string> processedUrls = new HashSet<string>();
+
+            for (int pageNum = 1; pageNum <= 50; pageNum++)
             {
-                await page.GoToAsync(targetUrl, WaitUntilNavigation.Networkidle2);
-                Console.WriteLine("⏳ Sayfa yükleniyor ve scroll yapılıyor...");
-                await Task.Delay(3000);
+                string pageUrl = pageNum == 1
+                    ? "https://www.techcareer.net/jobs"
+                    : $"https://www.techcareer.net/jobs?jobs[isCompleted]=false&jobs[page]={pageNum}&searchIdIsFiltered=false";
 
-                // Lazy-load ilanları yüklemek için sayfayı aşağı kaydır
-                await page.EvaluateFunctionAsync(@"async () => {
-                    for (let i = 0; i < 30; i++) {
-                        window.scrollBy({ top: 600, behavior: 'smooth' });
-                        await new Promise(r => setTimeout(r, 1200));
-                    }
-                    window.scrollTo(0, document.body.scrollHeight);
-                    await new Promise(r => setTimeout(r, 1500));
-                }");
-                await Task.Delay(2000);
+                Console.WriteLine($"\n  📄 Sayfa {pageNum} yükleniyor: {pageUrl}");
 
-                string htmlContent = await page.GetContentAsync();
-                HtmlDocument document = new HtmlDocument();
-                document.LoadHtml(htmlContent);
-
-                var jobNodes = document.DocumentNode.SelectNodes("//a[contains(@href, '/jobs/detail/')]");
-
-                if (jobNodes != null)
+                try
                 {
-                    var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
-                    optionsBuilder.UseSqlServer(_connectionString);
-                    using var db = new AppDbContext(optionsBuilder.Options);
+                    await page.GoToAsync(pageUrl, WaitUntilNavigation.Networkidle2);
+                    await Task.Delay(2500);
 
-                    int addedCount = 0;
-                    HashSet<string> processedUrls = new HashSet<string>();
+                    // Lazy-load içerik için aşağı scroll
+                    await page.EvaluateFunctionAsync(@"() => window.scrollTo(0, document.body.scrollHeight)");
+                    await Task.Delay(1500);
+                    await page.EvaluateFunctionAsync(@"() => window.scrollTo(0, document.body.scrollHeight)");
+                    await Task.Delay(1000);
 
+                    string html = await page.GetContentAsync();
+                    var doc = new HtmlDocument();
+                    doc.LoadHtml(html);
+
+                    // Sayfa 404 / yönlendirme kontrolü — içerik yoksa dur
+                    string currentUrl = page.Url;
+                    if (!currentUrl.Contains("techcareer.net/jobs")) break;
+
+                    // Techcareer ilan linki formatı: /jobs/detail/{slug}-{id}
+                    var jobNodes = doc.DocumentNode.SelectNodes(
+                        "//a[contains(@href, '/jobs/detail/')]"
+                    );
+
+                    Console.WriteLine($"  🔗 Bulunan ilan node sayısı: {jobNodes?.Count ?? 0}");
+
+                    if (jobNodes == null || jobNodes.Count == 0)
+                    {
+                        Console.WriteLine($"  📭 Sayfa {pageNum}: İlan node'u bulunamadı — sayfalama bitti.");
+                        consecutiveEmptyPages++;
+                        if (consecutiveEmptyPages >= 2) break;
+                        continue;
+                    }
+
+                    int pageAdded = 0;
                     foreach (var node in jobNodes)
                     {
-                        string jobUrl = node.GetAttributeValue("href", "");
+                        string href = node.GetAttributeValue("href", "");
+                        if (href.TrimEnd('/') == "/jobs" || href.Length < 15) continue;
 
-                        // Kategori/Ana sayfa linklerini baştan ele
-                        if (jobUrl == "/jobs" || jobUrl.Length < 15 || jobUrl.Contains("is-ilanlari") || jobUrl.Contains("ilanlari")) continue;
-
-                        string fullUrl = jobUrl.StartsWith("http") ? jobUrl : $"https://www.techcareer.net{jobUrl}";
-
+                        string fullUrl = href.StartsWith("http") ? href : $"https://www.techcareer.net{href}";
                         if (processedUrls.Contains(fullUrl)) continue;
                         processedUrls.Add(fullUrl);
 
-                        string jobTitle = node.InnerText.Replace("\n", "").Replace("\r", "").Trim();
-                        jobTitle = System.Text.RegularExpressions.Regex.Replace(jobTitle, @"\s+", " ");
+                        // İlanın başlığını node'un InnerText'inden çıkar
+                        var lines = node.InnerText.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                                                  .Select(l => l.Trim())
+                                                  .Where(l => l.Length > 2)
+                                                  .ToList();
+                        string jobTitle = lines.FirstOrDefault() ?? "";
+                        jobTitle = System.Text.RegularExpressions.Regex.Replace(jobTitle, @"\s+", " ").Trim();
 
-                        if (string.IsNullOrWhiteSpace(jobTitle) || jobTitle.Length < 5) continue;
-
-                        // ==========================================
-                        // YENİ ÇÖP FİLTRESİ (Anti-Garbage System)
-                        // ==========================================
-                        string lowerTitle = jobTitle.ToLower();
-
-                        // Başlığında bu kelimeler geçenleri çöpe at
-                        if (lowerTitle.Contains("ilanları") ||
-                            lowerTitle.Contains("tümünü gör") ||
-                            lowerTitle.Contains("tıklayın") ||
-                            lowerTitle.Contains("iş yerinde") ||
-                            lowerTitle.Contains("sözleşmeli"))
-                        {
+                        if (jobTitle.Length < 5) continue;
+                        if (jobTitle.Contains("ilanları", StringComparison.OrdinalIgnoreCase) ||
+                            jobTitle.Contains("tümünü gör", StringComparison.OrdinalIgnoreCase) ||
+                            System.Text.RegularExpressions.Regex.IsMatch(jobTitle, @"\(\d+\)$"))
                             continue;
-                        }
 
-                        // Regex ile sonu "(5)" gibi rakamla biten kategori isimlerini engelle
-                        if (System.Text.RegularExpressions.Regex.IsMatch(jobTitle, @"\(\d+\)$"))
-                        {
-                            continue;
-                        }
-                        // ==========================================
+                        if (db.JobPostings.Any(j => j.Url == fullUrl)) continue;
 
-                        if (!db.JobPostings.Any(j => j.Url == fullUrl))
+                        var newJob = new JobPosting
                         {
-                            var newJob = new JobPosting
-                            {
-                                Title = jobTitle.Length > 100 ? jobTitle.Substring(0, 100) : jobTitle,
-                                CompanyName = "Daha Sonra Çekilecek",
-                                Location = "Daha Sonra Çekilecek",
-                                Description = "Detaylar çekilecek...",
-                                Url = fullUrl,
-                                Source = ScraperName,
-                                ExtractedSkills = "",
-                                DateScraped = DateTime.Now,
-                                DatePosted = DateTime.Now
-                            };
+                            Title = jobTitle.Length > 100 ? jobTitle.Substring(0, 100) : jobTitle,
+                            CompanyName = "Daha Sonra Çekilecek",
+                            Location = "Daha Sonra Çekilecek",
+                            Description = "",
+                            Url = fullUrl.Length > 500 ? fullUrl.Substring(0, 500) : fullUrl,
+                            Source = ScraperName,
+                            ExtractedSkills = "",
+                            DateScraped = DateTime.UtcNow,
+                            DatePosted = DateTime.UtcNow
+                        };
+                        try
+                        {
                             db.JobPostings.Add(newJob);
-                            addedCount++;
-                            Console.WriteLine($"💾 Temiz İlan Bulundu: {newJob.Title.Substring(0, Math.Min(newJob.Title.Length, 40))}...");
+                            db.SaveChanges();
+                            pageAdded++;
+                            totalAdded++;
+                            Console.WriteLine($"    💾 {newJob.Title!.Substring(0, Math.Min(newJob.Title.Length, 50))}");
+                        }
+                        catch (Exception saveEx)
+                        {
+                            db.ChangeTracker.Clear();
+                            Console.WriteLine($"    ⚠️ Kayıt hatası: {saveEx.InnerException?.Message ?? saveEx.Message}");
                         }
                     }
-                    db.SaveChanges();
-                    Console.WriteLine($"💾 Yüzeysel Kazıma Bitti: {addedCount} YENİ ilan eklendi.");
+
+                    Console.WriteLine($"  ✅ Sayfa {pageNum}: {pageAdded} YENİ ilan eklendi.");
+
+                    // Bu sayfada hiç yeni ilan yoksa sayacı artır
+                    if (pageAdded == 0)
+                        consecutiveEmptyPages++;
+                    else
+                        consecutiveEmptyPages = 0;
+
+                    // 2 sayfa üst üste boşsa dur (ilanlar bitti ya da hepsi zaten DB'de)
+                    if (consecutiveEmptyPages >= 2)
+                    {
+                        Console.WriteLine("  🏁 Art arda 2 boş sayfa — tarama tamamlandı.");
+                        break;
+                    }
+
+                    await Task.Delay(1000); // Sunucuya nazik ol
                 }
-                else
+                catch (Exception ex)
                 {
-                    Console.WriteLine("⚠️ Techcareer'da ilan bulunamadı.");
+                    Console.WriteLine($"  ❌ Sayfa {pageNum} hata: {ex.Message}");
+                    consecutiveEmptyPages++;
+                    if (consecutiveEmptyPages >= 3) break;
                 }
             }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"❌ Hata: {ex.Message}");
-            }
+
+            Console.WriteLine($"\n💾 Yüzeysel Kazıma Bitti: Toplam {totalAdded} YENİ ilan eklendi.");
         }
 
         private async Task DeepScrapeAsync()
         {
             Console.WriteLine(">>> Aşama 2: Detaylar (Şirket/Şehir/Açıklama) Çekiliyor...");
             var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
-            optionsBuilder.UseSqlServer(_connectionString);
+            optionsBuilder.UseNpgsql(ConnectionString);
             using var db = new AppDbContext(optionsBuilder.Options);
 
-            var jobsToUpdate = db.JobPostings.Where(j => j.CompanyName == "Daha Sonra Çekilecek" && j.Source == ScraperName).ToList();
-            if (jobsToUpdate.Count == 0) return;
+            var jobsToUpdate = db.JobPostings
+                .Where(j => j.CompanyName == "Daha Sonra Çekilecek" && j.Source == ScraperName)
+                .ToList();
 
-            var launchOptions = new LaunchOptions { Headless = false, DefaultViewport = null, Args = new[] { "--disable-blink-features=AutomationControlled" } };
-            using var browser = await Puppeteer.LaunchAsync(launchOptions);
-            using var page = await browser.NewPageAsync();
-            await page.SetUserAgentAsync("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+            if (jobsToUpdate.Count == 0)
+            {
+                Console.WriteLine("   ℹ️ Güncellenecek ilan yok.");
+                return;
+            }
+
+            Console.WriteLine($"   📋 {jobsToUpdate.Count} ilan güncelleniyor (HttpClient ile)...");
+
+            // Detay sayfaları SSR — Puppeteer'a gerek yok, HttpClient çok daha hızlı
+            using var client = new System.Net.Http.HttpClient();
+            client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+            client.DefaultRequestHeaders.Add("Accept-Language", "tr-TR,tr;q=0.9");
+            client.Timeout = TimeSpan.FromSeconds(20);
+
+            int updatedCount = 0;
+            int failCount = 0;
 
             foreach (var job in jobsToUpdate)
             {
                 try
                 {
-                    await page.GoToAsync(job.Url, WaitUntilNavigation.Networkidle2);
-                    Thread.Sleep(2000);
+                    var response = await client.GetAsync(job.Url);
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        Console.WriteLine($"   ⚠️ HTTP {(int)response.StatusCode}: {job.Url?[..Math.Min(job.Url?.Length ?? 0, 60)]}");
+                        failCount++;
+                        continue;
+                    }
 
-                    string htmlContent = await page.GetContentAsync();
-                    HtmlDocument detailDoc = new HtmlDocument();
-                    detailDoc.LoadHtml(htmlContent);
+                    string html = await response.Content.ReadAsStringAsync();
+                    var doc = new HtmlDocument();
+                    doc.LoadHtml(html);
 
-                    var companyNode = detailDoc.DocumentNode.SelectSingleNode("//div[contains(@class, 'company')] | //h2[contains(@class, 'title')] | //span[contains(@class, 'company')]");
-                    var descNode = detailDoc.DocumentNode.SelectSingleNode("//div[contains(@class, 'description')] | //div[contains(@class, 'content')] | //div[contains(@class, 'text-content')]");
+                    // Firma: /sirketler/ linkinde her zaman var
+                    var companyNode = doc.DocumentNode.SelectSingleNode("//a[contains(@href, '/sirketler/')]");
 
-                    string companyName = companyNode != null ? companyNode.InnerText.Trim() : "Firma Çekilemedi";
-                    string fullDescription = descNode != null ? System.Text.RegularExpressions.Regex.Replace(descNode.InnerText.Trim(), @"\s+", " ") : job.Description;
+                    // Konum: "İstanbul / Türkiye" formatındaki metin — şehir + ülke pattern'i ara
+                    string locText = "Türkiye";
+                    var allText = doc.DocumentNode.InnerText;
+                    var locMatch = System.Text.RegularExpressions.Regex.Match(
+                        allText, @"([A-ZÇĞİÖŞÜa-zçğışöşü]+(?:\s+[A-ZÇĞİÖŞÜa-zçğışöşü]+)?)\s*/\s*Türkiye");
+                    if (locMatch.Success)
+                        locText = locMatch.Value.Trim();
 
-                    job.CompanyName = companyName.Length > 100 ? companyName.Substring(0, 100) : companyName;
-                    job.Location = "Belirtilmemiş / Remote";
-                    job.Description = fullDescription;
+                    // Açıklama: main içeriği al, nav/footer sil
+                    var mainNode = doc.DocumentNode.SelectSingleNode("//main") ??
+                                  doc.DocumentNode.SelectSingleNode("//article") ??
+                                  doc.DocumentNode.SelectSingleNode("//div[contains(@class,'detail')]") ??
+                                  doc.DocumentNode.SelectSingleNode("//div[contains(@class,'content')]");
+
+                    string description = "";
+                    if (mainNode != null)
+                    {
+                        description = System.Text.RegularExpressions.Regex.Replace(
+                            mainNode.InnerText.Trim(), @"\s+", " ");
+                    }
+
+                    string companyName = companyNode != null
+                        ? System.Net.WebUtility.HtmlDecode(companyNode.InnerText.Trim())
+                        : "Firma Çekilemedi";
+
+                    job.CompanyName = companyName.Length > 100 ? companyName[..100] : companyName;
+                    job.Location    = locText.Length > 100 ? locText[..100] : locText;
+                    job.Description = description.Length > 8000 ? description[..8000] : description;
 
                     db.SaveChanges();
-                    Console.WriteLine($"   - Güncellendi: {job.Title.Substring(0, Math.Min(job.Title.Length, 20))}...");
+                    updatedCount++;
+                    Console.WriteLine($"   ✅ [{updatedCount}/{jobsToUpdate.Count}] {job.CompanyName} — {job.Location}");
+
+                    await Task.Delay(300); // Sunucuya nazik ol
                 }
-                catch { /* Hata olursa atla */ }
+                catch (Exception ex)
+                {
+                    db.ChangeTracker.Clear();
+                    failCount++;
+                    Console.WriteLine($"   ⚠️ Hata: {ex.Message}");
+                }
             }
+
+            Console.WriteLine($"\n   📊 Tamamlandı: {updatedCount} güncellendi, {failCount} hata.");
         }
     }
 }
