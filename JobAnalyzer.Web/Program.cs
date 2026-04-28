@@ -5,6 +5,7 @@ using JobAnalyzer.Data;
 using JobAnalyzer.Data.Models;
 using JobAnalyzer.Web.Services;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
@@ -104,6 +105,12 @@ builder.Services.AddRateLimiter(options =>
 var app = builder.Build();
 
 // ── Middleware ─────────────────────────────────────────────────────────────
+// Nginx arkasında gerçek istemci IP'lerini al (rate limiting için gerekli)
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+});
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error");
@@ -112,9 +119,8 @@ if (!app.Environment.IsDevelopment())
 else
 {
     app.UseDeveloperExceptionPage();
+    app.UseHttpsRedirection();
 }
-
-app.UseHttpsRedirection();
 
 // ── Security Headers ──────────────────────────────────────────────────────
 app.Use(async (context, next) =>

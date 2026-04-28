@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  web:
+    image: ghcr.io/frknaydn3512/jobanalyzer:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: jobanalyzer_web
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - jobanalyzer_net
+
+  nginx:
+    image: nginx:alpine
+    container_name: jobanalyzer_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      web:
+        condition: service_healthy
+    networks:
+      - jobanalyzer_net
+
+networks:
+  jobanalyzer_net:
+    driver: bridge
