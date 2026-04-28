@@ -55,7 +55,10 @@ builder.Services.AddHangfire(config => config
 // Production'da (deploy sonrası) worker devreye girer ve cron job'lar çalışır.
 if (!builder.Environment.IsDevelopment())
 {
-    builder.Services.AddHangfireServer();
+    builder.Services.AddHangfireServer(options =>
+    {
+        options.WorkerCount = 1;
+    });
 }
 
 // ── 4. Uygulama servisleri ────────────────────────────────────────────────
