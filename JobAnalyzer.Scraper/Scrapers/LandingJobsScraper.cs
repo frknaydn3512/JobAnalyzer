@@ -27,6 +27,7 @@ namespace JobAnalyzer.Scraper.Scrapers
             optionsBuilder.UseNpgsql(ConnectionString);
             using var db = new AppDbContext(optionsBuilder.Options);
 
+            var existingUrls = LoadExistingUrls(db);
             var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
             int totalAdded = 0;
 
@@ -73,7 +74,7 @@ namespace JobAnalyzer.Scraper.Scrapers
                                 ? (job.Url.StartsWith("http") ? job.Url : $"https://landing.jobs{job.Url}")
                                 : "";
                             if (string.IsNullOrWhiteSpace(jobUrl) || string.IsNullOrWhiteSpace(job.Title)) continue;
-                            if (db.JobPostings.Any(j => j.Url == jobUrl)) continue;
+                            if (!existingUrls.Add(jobUrl)) continue;
 
                             string cleanDesc = Regex.Replace(job.Description ?? "", "<.*?>", " ");
                             cleanDesc = Regex.Replace(cleanDesc, @"\s+", " ").Trim();

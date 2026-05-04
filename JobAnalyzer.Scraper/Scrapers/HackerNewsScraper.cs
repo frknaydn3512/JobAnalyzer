@@ -40,6 +40,7 @@ namespace JobAnalyzer.Scraper.Scrapers
             var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
             optionsBuilder.UseNpgsql(ConnectionString);
             using var db = new AppDbContext(optionsBuilder.Options);
+            var existingUrls = LoadExistingUrls(db);
 
             // 1. En son "Ask HN: Who is hiring?" thread'ini bul
             int threadId = await GetLatestHiringThreadIdAsync(client, jsonOptions);
@@ -89,7 +90,7 @@ namespace JobAnalyzer.Scraper.Scrapers
 
                     // URL: HN item linki
                     string postUrl = $"https://news.ycombinator.com/item?id={commentId}";
-                    if (db.JobPostings.Any(j => j.Url == postUrl)) continue;
+                    if (!existingUrls.Add(postUrl)) continue;
 
                     // Şirket adını almak için ilk satırı parse et ("|" veya "–" separator)
                     string company = "HN Community";

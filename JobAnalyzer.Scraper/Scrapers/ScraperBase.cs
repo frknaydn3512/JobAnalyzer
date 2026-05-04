@@ -1,3 +1,6 @@
+using JobAnalyzer.Data;
+using Microsoft.EntityFrameworkCore;
+
 namespace JobAnalyzer.Scraper.Scrapers
 {
     /// <summary>
@@ -19,5 +22,15 @@ namespace JobAnalyzer.Scraper.Scrapers
 
         public abstract string ScraperName { get; }
         public abstract Task RunAsync();
+
+        /// <summary>
+        /// Mevcut tüm URL'leri tek seferde HashSet olarak yükler.
+        /// Duplicate kontrolü artık per-row DB query yerine in-memory yapılır.
+        /// </summary>
+        protected static HashSet<string> LoadExistingUrls(AppDbContext db) =>
+            db.JobPostings
+                .Where(j => j.Url != null)
+                .Select(j => j.Url!)
+                .ToHashSet();
     }
 }

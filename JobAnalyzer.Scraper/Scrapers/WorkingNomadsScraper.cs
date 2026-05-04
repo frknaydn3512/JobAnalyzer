@@ -34,7 +34,7 @@ namespace JobAnalyzer.Scraper.Scrapers
 
             var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
             int totalAdded = 0;
-            var seenUrls = new HashSet<string>();
+            var existingUrls = LoadExistingUrls(db);
 
             foreach (var category in _categories)
             {
@@ -54,9 +54,7 @@ namespace JobAnalyzer.Scraper.Scrapers
                     {
                         string jobUrl = job.Url ?? "";
                         if (string.IsNullOrWhiteSpace(jobUrl) || string.IsNullOrWhiteSpace(job.Title)) continue;
-                        if (seenUrls.Contains(jobUrl)) continue;
-                        seenUrls.Add(jobUrl);
-                        if (db.JobPostings.Any(j => j.Url == jobUrl)) continue;
+                        if (!existingUrls.Add(jobUrl)) continue;
 
                         // tags alanı API'de string[] veya object[] olabilir — her ikisini de handle et
                         string skills = ExtractTags(job.Tags);

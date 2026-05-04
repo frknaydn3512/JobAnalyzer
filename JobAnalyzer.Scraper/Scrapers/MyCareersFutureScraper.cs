@@ -36,7 +36,7 @@ namespace JobAnalyzer.Scraper.Scrapers
 
             var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
             int totalAdded = 0;
-            var seenUrls = new HashSet<string>();
+            var existingUrls = LoadExistingUrls(db);
 
             foreach (var keyword in _keywords)
             {
@@ -57,9 +57,7 @@ namespace JobAnalyzer.Scraper.Scrapers
                     foreach (var job in data.Results)
                     {
                         string jobUrl = job.Metadata?.JobDetailsUrl ?? $"https://www.mycareersfuture.gov.sg/job/{job.Uuid}";
-                        if (seenUrls.Contains(jobUrl)) continue;
-                        seenUrls.Add(jobUrl);
-                        if (db.JobPostings.Any(j => j.Url == jobUrl)) continue;
+                        if (!existingUrls.Add(jobUrl)) continue;
 
                         string title   = job.Title ?? "";
                         string company = job.Postedcompany?.Name ?? "Bilinmiyor";

@@ -34,6 +34,10 @@ namespace JobAnalyzer.Web.Services
             int deleted = await CleanupOldJobsAsync(connectionString, cleanupDays);
             _logger.LogInformation("🗑️ {Deleted} eski ilan silindi ({Days} gün)", deleted, cleanupDays);
 
+            // ── 1b. Duplicate URL'leri temizle (en eskileri tut, fazlalıkları sil) ──
+            int dupDeleted = await CleanupDuplicateUrlsAsync(connectionString);
+            _logger.LogInformation("♻️ {Deleted} duplicate ilan temizlendi", dupDeleted);
+
             // ── 2. API tabanlı scraper'ları çalıştır ────────────────────────
             // Puppeteer scraper'lar (KariyerNet, TechCareer) otomasyona dahil değil
             var scrapers = new List<IJobScraper>
@@ -103,15 +107,47 @@ namespace JobAnalyzer.Web.Services
                 using var db = new AppDbContext(optionsBuilder.Options);
 
                 var cutoff = DateTime.UtcNow.AddDays(-days);
-                var oldJobs = db.JobPostings.Where(j => j.DateScraped < cutoff);
-                int count = await oldJobs.CountAsync();
-                db.JobPostings.RemoveRange(oldJobs);
-                await db.SaveChangesAsync();
+                int count = await db.JobPostings
+                    .Where(j => j.DateScraped < cutoff)
+                    .ExecuteDeleteAsync();
                 return count;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Cleanup hatası");
+                return 0;
+            }
+        }
+
+        /// <summary>
+        /// Aynı URL'ye sahip kayıtlardan en küçük Id'yi (ilk eklenen) tutar, diğerlerini siler.
+        /// SavedJob FK kaskadıyla ilişkili kayıtlar otomatik temizlenir.
+        /// </summary>
+        private async Task<int> CleanupDuplicateUrlsAsync(string connectionString)
+        {
+            try
+            {
+                var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
+                optionsBuilder.UseNpgsql(connectionString);
+                using var db = new AppDbContext(optionsBuilder.Options);
+
+                const string sql = @"
+                    DELETE FROM ""JobPostings""
+                    WHERE ""Id"" IN (
+                        SELECT ""Id"" FROM (
+                            SELECT ""Id"",
+                                   ROW_NUMBER() OVER (PARTITION BY ""Url"" ORDER BY ""Id"") AS rn
+                            FROM ""JobPostings""
+                            WHERE ""Url"" IS NOT NULL
+                        ) t
+                        WHERE t.rn > 1
+                    );";
+
+                return await db.Database.ExecuteSqlRawAsync(sql);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Duplicate cleanup hatası");
                 return 0;
             }
         }

@@ -57,6 +57,7 @@ namespace JobAnalyzer.Scraper.Scrapers
                 var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
                 optionsBuilder.UseNpgsql(ConnectionString);
                 using var db = new AppDbContext(optionsBuilder.Options);
+                var existingUrls = LoadExistingUrls(db);
 
                 int addedCount = 0;
 
@@ -88,7 +89,7 @@ namespace JobAnalyzer.Scraper.Scrapers
                         if (!IsSoftwareRelated(title, skills)) continue;
 
                         // Aynı ilan varsa ekleme
-                        if (db.JobPostings.Any(j => j.Url == jobUrl)) continue;
+                        if (!existingUrls.Add(jobUrl)) continue;
 
                         // HTML temizle
                         string cleanDescription = System.Text.RegularExpressions.Regex.Replace(description, "<.*?>", String.Empty);

@@ -42,6 +42,7 @@ namespace JobAnalyzer.Scraper.Scrapers
             optionsBuilder.UseNpgsql(ConnectionString);
             using var db = new AppDbContext(optionsBuilder.Options);
 
+            var existingUrls = LoadExistingUrls(db);
             var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
             int totalAdded = 0;
 
@@ -69,7 +70,7 @@ namespace JobAnalyzer.Scraper.Scrapers
                     foreach (var job in data.Data)
                     {
                         if (string.IsNullOrWhiteSpace(job.Url) || string.IsNullOrWhiteSpace(job.Title)) continue;
-                        if (db.JobPostings.Any(j => j.Url == job.Url)) continue;
+                        if (!existingUrls.Add(job.Url)) continue;
 
                         // Sadece yazılım ilanlarını al
                         string tagsStr = string.Join(" ", job.Tags ?? new List<string>());

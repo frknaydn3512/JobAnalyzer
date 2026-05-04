@@ -73,6 +73,7 @@ namespace JobAnalyzer.Scraper.Scrapers
             optionsBuilder.UseNpgsql(ConnectionString);
             using var db = new AppDbContext(optionsBuilder.Options);
 
+            var existingUrls = LoadExistingUrls(db);
             var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
             int totalAdded = 0;
             int requestCount = 0;
@@ -122,7 +123,7 @@ namespace JobAnalyzer.Scraper.Scrapers
                             foreach (var job in data.Results)
                             {
                                 if (string.IsNullOrWhiteSpace(job.RedirectUrl) || string.IsNullOrWhiteSpace(job.Title)) continue;
-                                if (db.JobPostings.Any(j => j.Url == job.RedirectUrl)) continue;
+                                if (!existingUrls.Add(job.RedirectUrl)) continue;
 
                                 string cleanDesc = System.Text.RegularExpressions.Regex.Replace(job.Description ?? "", "<.*?>", "");
                                 cleanDesc = System.Text.RegularExpressions.Regex.Replace(cleanDesc, @"\s+", " ").Trim();

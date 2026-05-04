@@ -34,6 +34,7 @@ namespace JobAnalyzer.Scraper.Scrapers
             var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
             optionsBuilder.UseNpgsql(ConnectionString);
             using var db = new AppDbContext(optionsBuilder.Options);
+            var existingUrls = LoadExistingUrls(db);
 
             int totalAdded = 0;
 
@@ -97,7 +98,7 @@ namespace JobAnalyzer.Scraper.Scrapers
                         string pubDateStr = item.Element("pubDate")?.Value ?? "";
                         DateTime datePosted = DateTimeOffset.TryParse(pubDateStr, out var dto) ? dto.UtcDateTime : DateTime.UtcNow;
 
-                        if (db.JobPostings.Any(j => j.Url == jobUrl)) continue;
+                        if (!existingUrls.Add(jobUrl)) continue;
 
                         db.JobPostings.Add(new JobPosting
                         {

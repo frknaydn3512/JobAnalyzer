@@ -55,6 +55,7 @@ namespace JobAnalyzer.Scraper.Scrapers
             optionsBuilder.UseNpgsql(ConnectionString);
             using var db = new AppDbContext(optionsBuilder.Options);
 
+            var existingUrls = LoadExistingUrls(db);
             var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
             int totalAdded = 0;
 
@@ -94,7 +95,7 @@ namespace JobAnalyzer.Scraper.Scrapers
                     {
                         string jobUrl = job.JobApplyLink ?? job.JobUrl ?? "";
                         if (string.IsNullOrWhiteSpace(jobUrl) || string.IsNullOrWhiteSpace(job.JobTitle)) continue;
-                        if (db.JobPostings.Any(j => j.Url == jobUrl)) continue;
+                        if (!existingUrls.Add(jobUrl)) continue;
 
                         string jobLocation = !string.IsNullOrWhiteSpace(job.JobCity)
                             ? $"{job.JobCity}, {job.JobCountry ?? "Türkiye"}"

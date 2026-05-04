@@ -35,6 +35,7 @@ namespace JobAnalyzer.Scraper.Scrapers
                     var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
                     optionsBuilder.UseNpgsql(ConnectionString);
                     using var db = new AppDbContext(optionsBuilder.Options);
+                    var existingUrls = LoadExistingUrls(db);
 
                     int addedCount = 0;
 
@@ -43,7 +44,7 @@ namespace JobAnalyzer.Scraper.Scrapers
                         if (string.IsNullOrWhiteSpace(project.Title)) continue;
 
                         string fullUrl = $"https://www.freelancer.com/projects/{project.SeoUrl}";
-                        if (db.JobPostings.Any(j => j.Url == fullUrl)) continue;
+                        if (!existingUrls.Add(fullUrl)) continue;
 
                         // --- KRİTİK DÜZELTME BÖLGESİ ---
                         // İki alanı da kontrol et ve en uzun olanı baz al (bazen biri diğerinden daha kapsamlı gelir)

@@ -30,7 +30,7 @@ namespace JobAnalyzer.Scraper.Scrapers
 
             var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
             int totalAdded = 0;
-            var seenUrls = new HashSet<string>();
+            var existingUrls = LoadExistingUrls(db);
 
             // Djinni API offset tabanlı pagination kullanıyor (limit=10 fixed)
             Console.WriteLine($"\n  📂 Tüm ilanlar (sayfalama ile)");
@@ -71,9 +71,7 @@ namespace JobAnalyzer.Scraper.Scrapers
                                 ? (job.Url.StartsWith("http") ? job.Url : $"https://djinni.co{job.Url}")
                                 : "");
                         if (string.IsNullOrWhiteSpace(jobUrl) || string.IsNullOrWhiteSpace(job.Title)) continue;
-                        if (seenUrls.Contains(jobUrl)) continue;
-                        seenUrls.Add(jobUrl);
-                        if (db.JobPostings.Any(j => j.Url == jobUrl)) continue;
+                        if (!existingUrls.Add(jobUrl)) continue;
 
                         string cleanDesc = Regex.Replace(job.LongDescription ?? "", "<.*?>", " ");
                         cleanDesc = Regex.Replace(cleanDesc, @"\s+", " ").Trim();

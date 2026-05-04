@@ -38,7 +38,7 @@ namespace JobAnalyzer.Scraper.Scrapers
 
             var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
             int totalAdded = 0;
-            var seenUrls = new HashSet<string>();
+            var existingUrls = LoadExistingUrls(db);
 
             foreach (var category in _categories)
             {
@@ -64,9 +64,7 @@ namespace JobAnalyzer.Scraper.Scrapers
                         {
                             string jobUrl = job.Refs?.LandingPage ?? "";
                             if (string.IsNullOrWhiteSpace(jobUrl) || string.IsNullOrWhiteSpace(job.Name)) continue;
-                            if (seenUrls.Contains(jobUrl)) continue;
-                            seenUrls.Add(jobUrl);
-                            if (db.JobPostings.Any(j => j.Url == jobUrl)) continue;
+                            if (!existingUrls.Add(jobUrl)) continue;
 
                             string location = job.Locations?.FirstOrDefault()?.Name ?? "Remote / Global";
                             string company = job.Company?.Name ?? "Bilinmiyor";
