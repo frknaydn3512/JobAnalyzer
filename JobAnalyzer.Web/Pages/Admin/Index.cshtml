@@ -85,10 +85,27 @@
             <h5 class="fw-bold mb-3"><i class="bi bi-play-circle text-success"></i> Manuel İşlemler</h5>
             <p class="text-muted small">Zamanlanmış çalışmayı beklemeden hemen çalıştır veya veriyi düzelt.</p>
 
-            <form method="post" asp-page-handler="TriggerScraping" class="mb-2">
+            <form method="post" asp-page-handler="TriggerScraping" class="mb-3">
                 <button type="submit" class="btn btn-success w-100" @(Model.JobQueued ? "disabled" : "")>
-                    <i class="bi bi-cloud-download"></i> Tüm Scraper'ları Çalıştır
+                    <i class="bi bi-cloud-download"></i> Tüm Scraper'ları Çalıştır (Otomatikler)
                 </button>
+            </form>
+
+            <form method="post" asp-page-handler="TriggerSingleScraping" class="mb-4 bg-light p-2 rounded border">
+                <label class="form-label small fw-bold text-muted mb-1">Tekil / Manuel Scraper Çalıştır</label>
+                <div class="input-group input-group-sm">
+                    <select name="scraperName" class="form-select">
+                        <option value="KariyerNetScraper">KariyerNet (Manuel)</option>
+                        <option value="TechcareerScraper">Techcareer (Manuel)</option>
+                        <option value="LinkedInScraper">LinkedIn</option>
+                        <option value="JoobleScraper">Jooble</option>
+                        <option value="IndeedScraper">Indeed</option>
+                        <option value="AdzunaScraper">Adzuna</option>
+                        <option value="FreelancerComScraper">Freelancer.com</option>
+                        <option value="RemotiveScraper">Remotive</option>
+                    </select>
+                    <button type="submit" class="btn btn-outline-success">Çalıştır</button>
+                </div>
             </form>
 
             <form method="post" asp-page-handler="TriggerAnalysis" class="mb-4">

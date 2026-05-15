@@ -98,6 +98,52 @@ namespace JobAnalyzer.Web.Services
             _logger.LogInformation("🏁 Döngü tamamlandı. Süre: {Elapsed:mm\\:ss}", sw.Elapsed);
         }
 
+        public async Task RunSingleScraperAsync(string scraperName)
+        {
+            _logger.LogInformation("🚀 Manuel scraper başlatıldı: {ScraperName}", scraperName);
+            var scrapers = new List<IJobScraper>
+            {
+                new LinkedInScraper(),
+                new ArbeitnowScraper(),
+                new LandingJobsScraper(),
+                new DjinniScraper(),
+                new AdzunaScraper(),
+                new IndeedScraper(),
+                new JoobleScraper(),
+                new FreelancerComScraper(),
+                new RemotiveScraper(),
+                new WeWorkRemotelyScraper(),
+                new HimalayasScraper(),
+                new WorkingNomadsScraper(),
+                new RemoteOKScraper(),
+                new HackerNewsScraper(),
+                new TheMuseScraper(),
+                new MyCareersFutureScraper(),
+                new KariyerNetScraper(),   // Manuel tetiklemeler için eklendi
+                new TechcareerScraper()    // Manuel tetiklemeler için eklendi
+            };
+
+            var scraper = scrapers.FirstOrDefault(s => s.GetType().Name == scraperName || s.ScraperName == scraperName);
+            
+            if (scraper != null)
+            {
+                try
+                {
+                    _logger.LogInformation("▶️ {ScraperName} çalıştırılıyor...", scraper.ScraperName);
+                    await scraper.RunAsync();
+                    _logger.LogInformation("✅ {ScraperName} başarıyla tamamlandı", scraper.ScraperName);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "❌ {ScraperName} çalışırken hata oluştu", scraper.ScraperName);
+                }
+            }
+            else
+            {
+                _logger.LogWarning("⚠️ {ScraperName} adında bir scraper bulunamadı.", scraperName);
+            }
+        }
+
         private async Task<int> CleanupOldJobsAsync(string connectionString, int days)
         {
             try

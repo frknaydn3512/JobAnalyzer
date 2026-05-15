@@ -94,6 +94,19 @@ namespace JobAnalyzer.Web.Pages.Admin
         {
             BackgroundJob.Enqueue<ScrapingOrchestrator>(o => o.RunFullCycleAsync());
             JobQueued = true;
+            ActionMessage = "Tüm scraper'lar kuyruğa alındı.";
+            await LoadStats();
+            return Page();
+        }
+
+        public async Task<IActionResult> OnPostTriggerSingleScrapingAsync(string scraperName)
+        {
+            if (!string.IsNullOrEmpty(scraperName))
+            {
+                BackgroundJob.Enqueue<ScrapingOrchestrator>(o => o.RunSingleScraperAsync(scraperName));
+                JobQueued = true;
+                ActionMessage = $"{scraperName} kuyruğa alındı.";
+            }
             await LoadStats();
             return Page();
         }
