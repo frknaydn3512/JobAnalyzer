@@ -11,6 +11,14 @@
     </a>
 </div>
 
+@if (!string.IsNullOrEmpty(Model.ActionMessage))
+{
+    <div class="alert alert-success alert-dismissible fade show mb-4">
+        <i class="bi bi-check-circle-fill me-2"></i> @Model.ActionMessage
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
 <!-- Özet Kartlar -->
 <div class="row g-3 mb-4">
     <div class="col-md-3">
@@ -75,17 +83,30 @@
     <div class="col-md-6">
         <div class="card p-4">
             <h5 class="fw-bold mb-3"><i class="bi bi-play-circle text-success"></i> Manuel İşlemler</h5>
-            <p class="text-muted small">Zamanlanmış çalışmayı beklemeden hemen çalıştır.</p>
+            <p class="text-muted small">Zamanlanmış çalışmayı beklemeden hemen çalıştır veya veriyi düzelt.</p>
 
-            <form method="post" asp-page-handler="TriggerScraping" class="mb-3">
+            <form method="post" asp-page-handler="TriggerScraping" class="mb-2">
                 <button type="submit" class="btn btn-success w-100" @(Model.JobQueued ? "disabled" : "")>
                     <i class="bi bi-cloud-download"></i> Tüm Scraper'ları Çalıştır
                 </button>
             </form>
 
-            <form method="post" asp-page-handler="TriggerAnalysis">
-                <button type="submit" class="btn btn-info w-100">
-                    <i class="bi bi-cpu"></i> Groq AI Analizini Başlat (@Model.PendingAnalysis ilan bekliyor)
+            <form method="post" asp-page-handler="TriggerAnalysis" class="mb-4">
+                <button type="submit" class="btn btn-info w-100 text-white">
+                    <i class="bi bi-cpu"></i> Local Yetenek Analizini Başlat (@Model.PendingAnalysis ilan)
+                </button>
+            </form>
+
+            <h5 class="fw-bold mb-3 mt-4"><i class="bi bi-database text-danger"></i> Veritabanı Araçları (Proje / Demo)</h5>
+            <form method="post" asp-page-handler="CleanOldJobs" class="mb-2">
+                <button type="submit" class="btn btn-outline-danger w-100" onclick="return confirm('30 günden eski TÜM ilanlar silinecek. Emin misiniz?')">
+                    <i class="bi bi-trash"></i> 30 Günden Eski İlanları Sil
+                </button>
+            </form>
+
+            <form method="post" asp-page-handler="DistributeDates">
+                <button type="submit" class="btn btn-outline-primary w-100" onclick="return confirm('Eski ilanların tarihi son 30 güne rastgele dağıtılacak. Dashboard grafikleri dolu görünecek. Emin misiniz?')">
+                    <i class="bi bi-calendar-event"></i> Demo İçin Tarihleri Yay (Grafikleri Doldur)
                 </button>
             </form>
 

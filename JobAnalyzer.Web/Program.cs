@@ -53,13 +53,11 @@ builder.Services.AddHangfire(config => config
 
 // Development'ta Hangfire worker başlatılmaz — sadece dashboard erişilebilir.
 // Production'da (deploy sonrası) worker devreye girer ve cron job'lar çalışır.
-if (!builder.Environment.IsDevelopment())
+// GÜNCELLEME: Kullanıcı isteği üzerine yerel ortamda da otomatik silme işlemi çalışsın diye aktif edildi.
+builder.Services.AddHangfireServer(options =>
 {
-    builder.Services.AddHangfireServer(options =>
-    {
-        options.WorkerCount = 1;
-    });
-}
+    options.WorkerCount = 1;
+});
 
 // ── 4. Uygulama servisleri ────────────────────────────────────────────────
 builder.Services.AddScoped<ScrapingOrchestrator>();
@@ -150,35 +148,32 @@ app.UseHangfireDashboard("/hangfire", new DashboardOptions
 
 app.MapRazorPages();
 
-// ── Hangfire Recurring Jobs (sadece production'da kayıtlı) ───────────────
-if (!app.Environment.IsDevelopment())
+// ── Hangfire Recurring Jobs (Otomatik Temizleme ve Scraping) ───────────────
+var ignoreMisfire = new RecurringJobOptions
 {
-    var ignoreMisfire = new RecurringJobOptions
-    {
-        MisfireHandling = MisfireHandlingMode.Ignorable
-    };
+    MisfireHandling = MisfireHandlingMode.Ignorable
+};
 
-    RecurringJob.AddOrUpdate<ScrapingOrchestrator>(
-        "daily-scraping",
-        orchestrator => orchestrator.RunFullCycleAsync(),
-        "0 3 * * *",
-        ignoreMisfire
-    );
+RecurringJob.AddOrUpdate<ScrapingOrchestrator>(
+    "daily-scraping",
+    orchestrator => orchestrator.RunFullCycleAsync(),
+    "0 3 * * *",
+    ignoreMisfire
+);
 
-    RecurringJob.AddOrUpdate<AlertService>(
-        "daily-alerts",
-        svc => svc.CheckAlertsAsync(),
-        "0 9 * * *",
-        ignoreMisfire
-    );
+RecurringJob.AddOrUpdate<AlertService>(
+    "daily-alerts",
+    svc => svc.CheckAlertsAsync(),
+    "0 9 * * *",
+    ignoreMisfire
+);
 
-    RecurringJob.AddOrUpdate<SubscriptionExpiryService>(
-        "subscription-expiry",
-        svc => svc.CheckExpiredSubscriptionsAsync(),
-        "0 1 * * *",
-        ignoreMisfire
-    );
-}
+RecurringJob.AddOrUpdate<SubscriptionExpiryService>(
+    "subscription-expiry",
+    svc => svc.CheckExpiredSubscriptionsAsync(),
+    "0 1 * * *",
+    ignoreMisfire
+);
 
 // ── Admin rolü seed ───────────────────────────────────────────────────────
 using (var scope = app.Services.CreateScope())

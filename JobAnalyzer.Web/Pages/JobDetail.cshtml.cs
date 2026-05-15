@@ -72,6 +72,19 @@ namespace JobAnalyzer.Web.Pages
             return RedirectToPage(new { id });
         }
 
+        public async Task<IActionResult> OnPostReportClosedAsync(int id)
+        {
+            var job = await _context.JobPostings.FindAsync(id);
+            if (job != null)
+            {
+                _context.JobPostings.Remove(job);
+                await _context.SaveChangesAsync();
+            }
+
+            // Kapalı ilan bildirildikten sonra listeye dön
+            return RedirectToPage("/Listings");
+        }
+
         public async Task<IActionResult> OnPostGenerateLetterAsync(int id)
         {
             var job = await _context.JobPostings.FindAsync(id);

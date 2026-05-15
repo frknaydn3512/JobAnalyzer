@@ -22,20 +22,28 @@
                     <span class="badge bg-primary fs-6 me-2">@Model.Job.Source</span>
                     <span class="badge bg-secondary fs-6">@Model.Job.Location</span>
                 </div>
-                <div class="d-flex gap-2">
-                    @if (User.Identity?.IsAuthenticated == true)
-                    {
-                        <form method="post" asp-page-handler="ToggleSave">
-                            <input type="hidden" name="id" value="@Model.Job.Id" />
-                            <button type="submit" class="btn @(Model.IsSaved ? "btn-warning" : "btn-outline-warning") btn-lg">
-                                <i class="bi bi-bookmark@(Model.IsSaved ? "-fill" : "")"></i>
-                                @(Model.IsSaved ? "Kaydedildi" : "Kaydet")
-                            </button>
-                        </form>
-                    }
-                    <a href="@Model.Job.Url" target="_blank" class="btn btn-primary btn-lg shadow-sm">
-                        Orijinal İlana Git <i class="bi bi-box-arrow-up-right"></i>
-                    </a>
+                <div class="d-flex flex-column gap-2 align-items-end">
+                    <div class="d-flex gap-2">
+                        @if (User.Identity?.IsAuthenticated == true)
+                        {
+                            <form method="post" asp-page-handler="ToggleSave">
+                                <input type="hidden" name="id" value="@Model.Job.Id" />
+                                <button type="submit" class="btn @(Model.IsSaved ? "btn-warning" : "btn-outline-warning") btn-lg">
+                                    <i class="bi bi-bookmark@(Model.IsSaved ? "-fill" : "")"></i>
+                                    @(Model.IsSaved ? "Kaydedildi" : "Kaydet")
+                                </button>
+                            </form>
+                        }
+                        <a href="@Model.Job.Url" target="_blank" class="btn btn-primary btn-lg shadow-sm">
+                            Orijinal İlana Git <i class="bi bi-box-arrow-up-right"></i>
+                        </a>
+                    </div>
+                    <form method="post" asp-page-handler="ReportClosed" onsubmit="return confirm('Bu ilanın kapandığını bildirmek üzeresiniz. İlan sistemden silinecek. Emin misiniz?');">
+                        <input type="hidden" name="id" value="@Model.Job.Id" />
+                        <button type="submit" class="btn btn-outline-danger btn-sm mt-1">
+                            <i class="bi bi-x-circle"></i> İlan Kapandı Mı? Bildir & Sil
+                        </button>
+                    </form>
                 </div>
             </div>
 
